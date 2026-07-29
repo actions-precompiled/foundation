@@ -8,13 +8,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
 // SmokeBinaryHelp is a default smoke: extract each tarball, require bin/<Binary>,
-// try --help / --version / -V / -h, fail on dynamic linker errors.
-// Packages with custom needs implement Smoke themselves (e.g. Xvfb for quickshell).
+// verify Linux packages are relocatable (RPATH/$ORIGIN, no LD_LIBRARY_PATH),
+// then run the binary by absolute path with a clean loader env.
+// Packages with custom needs implement Smoke themselves.
 func SmokeBinaryHelp(ctx context.Context, deps Deps, meta Meta, req SmokeRequest) error {
 	meta = meta.Normalize()
 	if meta.Binary == "" {
@@ -48,24 +50,10 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 		return fmt.Errorf("extract %s: %w", tarball, err)
 	}
 
-	entries, err := deps.FS.ReadDir(tmp)
+	prefix, err := singleTopDir(deps, tmp)
 	if err != nil {
 		return err
 	}
-	var roots []string
-	for _, e := range entries {
-		if e.IsDir() {
-			roots = append(roots, filepath.Join(tmp, e.Name()))
-		}
-	}
-	if len(roots) != 1 {
-		names := make([]string, 0, len(roots))
-		for _, r := range roots {
-			names = append(names, filepath.Base(r))
-		}
-		return fmt.Errorf("expected one top-level dir, got: %v", names)
-	}
-	prefix := roots[0]
 	binPath := filepath.Join(prefix, "bin", meta.Binary)
 	if _, err := deps.FS.Stat(binPath); err != nil {
 		return fmt.Errorf("missing bin/%s in package", meta.Binary)
@@ -77,18 +65,22 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 		deps.Logf("%s", strings.TrimSpace(string(data)))
 	}
 
-	libDir := filepath.Join(prefix, "lib")
-	env := append([]string(nil), deps.Env.Environ()...)
-	if st, err := deps.FS.Stat(libDir); err == nil && st.IsDir() {
-		env = prependEnv(env, "LD_LIBRARY_PATH", libDir)
+	// Self-contained: never set LD_LIBRARY_PATH / never put package bin on PATH.
+	if runtime.GOOS != "windows" && !IsWindowsTarget(guessTargetFromTarball(tarball)) {
+		if err := CheckLinuxRelocatable(prefix, RelocatableOpts{
+			RequiredBins: []string{meta.Binary},
+		}); err != nil {
+			return err
+		}
+		deps.Logf("relocatable: RPATH/$ORIGIN OK for bin/%s", meta.Binary)
 	}
+
+	env := CleanSmokeEnv(deps.Env.Environ())
 
 	var lastOut string
 	var lastCode error
 	tried := [][]string{{"--help"}, {"--version"}, {"-V"}, {"-h"}}
 	for _, args := range tried {
-		cmdArgs := append([]string{binPath}, args...)
-		// Use runner with env
 		out, err := runWithEnv(ctx, deps, env, binPath, args...)
 		lastOut = out
 		lastCode = err
@@ -103,19 +95,52 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 		low := strings.ToLower(out)
 		if strings.Contains(low, "error while loading shared libraries") ||
 			strings.Contains(low, "cannot open shared object") {
-			return fmt.Errorf("smoke failed for %v: dynamic linker error", args)
+			return fmt.Errorf("smoke failed for %v: dynamic linker error (package must be relocatable without LD_LIBRARY_PATH)", args)
 		}
 		if strings.TrimSpace(out) != "" || err == nil {
 			deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
 			return nil
 		}
-		_ = cmdArgs
 	}
 	if lastCode != nil && strings.TrimSpace(lastOut) == "" {
 		return fmt.Errorf("smoke failed: binary produced no output (%v)", tried[len(tried)-1])
 	}
 	deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
 	return nil
+}
+
+func singleTopDir(deps Deps, tmp string) (string, error) {
+	entries, err := deps.FS.ReadDir(tmp)
+	if err != nil {
+		return "", err
+	}
+	var roots []string
+	for _, e := range entries {
+		if e.IsDir() {
+			roots = append(roots, filepath.Join(tmp, e.Name()))
+		}
+	}
+	if len(roots) != 1 {
+		names := make([]string, 0, len(roots))
+		for _, r := range roots {
+			names = append(names, filepath.Base(r))
+		}
+		return "", fmt.Errorf("expected one top-level dir, got: %v", names)
+	}
+	return roots[0], nil
+}
+
+func guessTargetFromTarball(tarball string) string {
+	base := filepath.Base(tarball)
+	for _, t := range []string{
+		"windows-amd64", "windows-arm64",
+		TargetLinuxAMD64, TargetLinuxAArch64,
+	} {
+		if strings.Contains(base, t) {
+			return t
+		}
+	}
+	return ""
 }
 
 func runWithEnv(ctx context.Context, deps Deps, env []string, name string, args ...string) (string, error) {
@@ -127,17 +152,6 @@ func runWithEnv(ctx context.Context, deps Deps, env []string, name string, args 
 		return rw.OutputWith(ctx, RunOpts{Env: env}, name, args...)
 	}
 	return deps.Runner.Output(ctx, name, args...)
-}
-
-func prependEnv(env []string, key, value string) []string {
-	prefix := key + "="
-	for i, e := range env {
-		if strings.HasPrefix(e, prefix) {
-			env[i] = prefix + value + ":" + strings.TrimPrefix(e, prefix)
-			return env
-		}
-	}
-	return append(env, prefix+value)
 }
 
 func extractTarGz(src, dst string) error {

@@ -56,6 +56,15 @@ Writes:
   `go run . build <version>`
 - `.github/workflows/dispatch-missing.yml` — `go run . list` → `gh workflow run Build`
 
+## Relocatable Linux (RPATH)
+
+Packages that ship shared libs must be runnable **without** `LD_LIBRARY_PATH`:
+
+- `PatchLinuxOriginRPath` — post-install `patchelf --set-rpath '$ORIGIN/...'`
+- `CheckLinuxRelocatable` — pure-Go check that bundled SONAMEs resolve via RUNPATH
+- `CleanSmokeEnv` — strips `LD_LIBRARY_PATH` / `LD_PRELOAD` / `DYLD_*`
+- default `SmokeBinaryHelp` uses absolute paths + clean env + relocatable check
+
 ## Version type
 
 `ParseVersion` / `Compare` (from workspaced semver ideas) sorts tags for
