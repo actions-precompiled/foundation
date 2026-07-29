@@ -113,7 +113,7 @@ func ResolveConfig(env Environ, meta Meta, flags Flags, cmd Command) (Config, er
 	}
 	if cmd != CommandList && cmd != CommandGenerateWorkflow && cmd != CommandWork && cmd != CommandPlan {
 		if len(cfg.Targets) == 0 {
-			return Config{}, fmt.Errorf("no targets resolved")
+			return Config{}, fmt.Errorf("%w", ErrNoTargets)
 		}
 	}
 

@@ -38,7 +38,7 @@ func GenerateWorkflows(deps Deps, meta Meta, cfg Config) error {
 		path := filepath.Join(dir, name)
 		if !cfg.ForceWrite {
 			if _, err := deps.FS.Stat(path); err == nil {
-				return fmt.Errorf("%s exists (pass --force to overwrite)", path)
+				return fmt.Errorf("%w: %s", ErrWorkflowExists, path)
 			}
 		}
 		if err := deps.FS.WriteFile(path, []byte(body), 0o644); err != nil {

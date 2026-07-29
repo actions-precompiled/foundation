@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,10 +21,10 @@ import (
 func SmokeBinaryHelp(ctx context.Context, deps Deps, meta Meta, req SmokeRequest) error {
 	meta = meta.Normalize()
 	if meta.Binary == "" {
-		return fmt.Errorf("SmokeBinaryHelp: Meta.Binary is required")
+		return fmt.Errorf("%w", ErrSmokeBinaryRequired)
 	}
 	if len(req.Tarballs) == 0 {
-		return fmt.Errorf("SmokeBinaryHelp: no tarballs")
+		return fmt.Errorf("%w", ErrSmokeNoTarballs)
 	}
 	for _, tb := range req.Tarballs {
 		if err := smokeOneTarball(ctx, deps, meta, tb); err != nil {
@@ -37,14 +38,18 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 	deps.Logf("")
 	deps.Logf("Smoke test: %s", filepath.Base(tarball))
 	if _, err := deps.FS.Stat(tarball); err != nil {
-		return fmt.Errorf("tarball missing: %s", tarball)
+		return fmt.Errorf("%w: %s", ErrTarballMissing, tarball)
 	}
 
 	tmp, err := deps.FS.TempDir("", meta.Name+"-smoke-")
 	if err != nil {
 		return err
 	}
-	defer func() { _ = deps.FS.RemoveAll(tmp) }()
+	defer func() {
+		if err := deps.FS.RemoveAll(tmp); err != nil {
+			deps.Logf("smoke cleanup: %v", err)
+		}
+	}()
 
 	if err := extractTarGz(tarball, tmp); err != nil {
 		return fmt.Errorf("extract %s: %w", tarball, err)
@@ -56,7 +61,7 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 	}
 	binPath := filepath.Join(prefix, "bin", meta.Binary)
 	if _, err := deps.FS.Stat(binPath); err != nil {
-		return fmt.Errorf("missing bin/%s in package", meta.Binary)
+		return fmt.Errorf("%w: bin/%s", ErrMissingPackageBinary, meta.Binary)
 	}
 
 	buildinfo := filepath.Join(prefix, "BUILDINFO.txt")
@@ -95,7 +100,7 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 		low := strings.ToLower(out)
 		if strings.Contains(low, "error while loading shared libraries") ||
 			strings.Contains(low, "cannot open shared object") {
-			return fmt.Errorf("smoke failed for %v: dynamic linker error (package must be relocatable without LD_LIBRARY_PATH)", args)
+			return fmt.Errorf("%w: %v", ErrSmokeDynamicLink, args)
 		}
 		if strings.TrimSpace(out) != "" || err == nil {
 			deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
@@ -103,7 +108,7 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 		}
 	}
 	if lastCode != nil && strings.TrimSpace(lastOut) == "" {
-		return fmt.Errorf("smoke failed: binary produced no output (%v)", tried[len(tried)-1])
+		return fmt.Errorf("%w (%v)", ErrSmokeNoOutput, tried[len(tried)-1])
 	}
 	deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
 	return nil
@@ -125,7 +130,7 @@ func singleTopDir(deps Deps, tmp string) (string, error) {
 		for _, r := range roots {
 			names = append(names, filepath.Base(r))
 		}
-		return "", fmt.Errorf("expected one top-level dir, got: %v", names)
+		return "", fmt.Errorf("%w, got: %v", ErrBadTarballLayout, names)
 	}
 	return roots[0], nil
 }
@@ -179,7 +184,7 @@ func extractTarGz(src, dst string) error {
 		// Basic path hygiene
 		name := filepath.Clean(hdr.Name)
 		if strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
-			return fmt.Errorf("refusing unsafe path in tarball: %s", hdr.Name)
+			return fmt.Errorf("%w: %s", ErrUnsafeTarballPath, hdr.Name)
 		}
 		target := filepath.Join(dst, name)
 		switch hdr.Typeflag {
@@ -210,7 +215,9 @@ func extractTarGz(src, dst string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			_ = os.Remove(target)
+			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+				// replace existing path
+			}
 			if err := os.Symlink(hdr.Linkname, target); err != nil {
 				return err
 			}

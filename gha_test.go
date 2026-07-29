@@ -1,7 +1,6 @@
 package foundation_test
 
 import (
-	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -48,18 +47,24 @@ func TestRunCIPlanUsesLatestTag(t *testing.T) {
 		GitHub: fakeGitHub{upstream: []string{"llvmorg-20.1.0", "llvmorg-21.1.0"}},
 	}
 	meta := foundation.Meta{Name: "llvm", UpstreamRepoAPI: "llvm/llvm-project", ImageName: "x"}.Normalize()
-	if err := foundation.RunCIPlan(context.Background(), deps, meta, foundation.CIPlanInput{
+	if err := foundation.RunCIPlan(t.Context(), deps, meta, foundation.CIPlanInput{
 		EventName: "push",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	o, _ := fs.ReadFile(gout)
-	os := string(o)
-	// LatestReleaseTag on fake returns last upstream
-	if !strings.Contains(os, "version=llvmorg-21.1.0") {
-		t.Fatalf("output %q", os)
+	o, err := fs.ReadFile(gout)
+	if err != nil {
+		t.Fatal(err)
 	}
-	s, _ := fs.ReadFile(summary)
+	out := string(o)
+	// LatestReleaseTag on fake returns last upstream
+	if !strings.Contains(out, "version=llvmorg-21.1.0") {
+		t.Fatalf("output %q", out)
+	}
+	s, err := fs.ReadFile(summary)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !strings.Contains(string(s), "Version: `llvmorg-21.1.0`") {
 		t.Fatalf("summary %q", string(s))
 	}

@@ -85,21 +85,31 @@ func (fakeRunner) Output(context.Context, string, ...string) (string, error) {
 	return "", nil
 }
 
-func testDeps(t *testing.T, env foundation.MapEnviron, gh foundation.GitHub, docker foundation.Docker) (foundation.Deps, *bytes.Buffer, *bytes.Buffer) {
+type testHarness struct {
+	Deps   foundation.Deps
+	Stdout *bytes.Buffer
+	Stderr *bytes.Buffer
+}
+
+func testDeps(t *testing.T, env foundation.MapEnviron, gh foundation.GitHub, docker foundation.Docker) testHarness {
 	t.Helper()
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
 	wd := t.TempDir()
-	return foundation.Deps{
-		WorkDir: wd,
-		Runner:  fakeRunner{},
-		Env:     env,
-		GitHub:  gh,
-		Docker:  docker,
-		FS:      foundation.OSFileSystem{},
-		Stdout:  stdout,
-		Stderr:  stderr,
-	}, stdout, stderr
+	return testHarness{
+		Deps: foundation.Deps{
+			WorkDir: wd,
+			Runner:  fakeRunner{},
+			Env:     env,
+			GitHub:  gh,
+			Docker:  docker,
+			FS:      foundation.OSFileSystem{},
+			Stdout:  stdout,
+			Stderr:  stderr,
+		},
+		Stdout: stdout,
+		Stderr: stderr,
+	}
 }
 
 func TestMainWithListToBuildMissing(t *testing.T) {
@@ -109,7 +119,8 @@ func TestMainWithListToBuildMissing(t *testing.T) {
 		released: []string{"v1.0.0"},
 	}
 	docker := &fakeDocker{}
-	deps, stdout, _ := testDeps(t, foundation.MapEnviron{}, gh, docker)
+	h := testDeps(t, foundation.MapEnviron{}, gh, docker)
+	deps, stdout := h.Deps, h.Stdout
 
 	err := foundation.MainWith(pkg, deps, []string{"list"})
 	if err != nil {
@@ -131,7 +142,8 @@ func TestMainWithListToBuildAll(t *testing.T) {
 		upstream: []string{"v1.0.0", "v1.1.0"},
 		released: []string{"v1.0.0"},
 	}
-	deps, stdout, _ := testDeps(t, foundation.MapEnviron{}, gh, &fakeDocker{})
+	h := testDeps(t, foundation.MapEnviron{}, gh, &fakeDocker{})
+	deps, stdout := h.Deps, h.Stdout
 
 	err := foundation.MainWith(pkg, deps, []string{"list", "--all"})
 	if err != nil {
@@ -145,7 +157,8 @@ func TestMainWithListToBuildAll(t *testing.T) {
 
 func TestMainWithDryRunExplicitVersion(t *testing.T) {
 	pkg := &fakePkg{}
-	deps, _, stderr := testDeps(t, foundation.MapEnviron{}, fakeGitHub{}, &fakeDocker{})
+	h := testDeps(t, foundation.MapEnviron{}, fakeGitHub{}, &fakeDocker{})
+	deps, stderr := h.Deps, h.Stderr
 
 	err := foundation.MainWith(pkg, deps, []string{"build", "--dry-run", "v9.9.9"})
 	if err != nil {
@@ -168,7 +181,8 @@ func TestMainWithBuildAndSmoke(t *testing.T) {
 	env := foundation.MapEnviron{
 		foundation.EnvSkipImageBuild: "1",
 	}
-	deps, _, _ := testDeps(t, env, fakeGitHub{}, docker)
+	h := testDeps(t, env, fakeGitHub{}, docker)
+	deps := h.Deps
 
 	err := foundation.MainWith(pkg, deps, []string{"build", "--skip-image-build", "v1.2.3"})
 	if err != nil {
@@ -192,7 +206,8 @@ func TestMainWithAPCTargetsEnv(t *testing.T) {
 		foundation.EnvSkipImageBuild: "1",
 		foundation.EnvSkipSmoke:      "1",
 	}
-	deps, _, _ := testDeps(t, env, fakeGitHub{}, &fakeDocker{})
+	h := testDeps(t, env, fakeGitHub{}, &fakeDocker{})
+	deps := h.Deps
 
 	err := foundation.MainWith(pkg, deps, []string{"build", "--skip-smoke", "v0.1.0"})
 	if err != nil {

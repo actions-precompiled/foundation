@@ -15,7 +15,7 @@ func ArtifactName(packageName, version, target string) string {
 // FindTarballs locates package tarballs for a version/target under outDir.
 func FindTarballs(fs FileSystem, packageName, version, target, outDir string) ([]string, error) {
 	if fs == nil {
-		return nil, fmt.Errorf("FindTarballs: FS is nil")
+		return nil, fmt.Errorf("FindTarballs: %w", ErrFSNil)
 	}
 	if _, err := fs.Stat(outDir); err != nil {
 		return nil, nil

@@ -1,7 +1,6 @@
 package foundation
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -113,7 +112,7 @@ The same Go binary is the host orchestrator and the in-container worker:
 			if cfg.WorkDir != "" {
 				d.WorkDir = cfg.WorkDir
 			}
-			return Run(context.Background(), p, d, cfg)
+			return Run(c.Context(), p, d, cfg)
 		}
 	}
 
@@ -217,7 +216,7 @@ Matrix targets come from Meta.DefaultTargets (or linux-amd64/aarch64 defaults).`
 			if cfg.WorkDir != "" {
 				d.WorkDir = cfg.WorkDir
 			}
-			return Run(context.Background(), p, d, cfg)
+			return Run(c.Context(), p, d, cfg)
 		},
 	}
 	genWorkflowCmd.Flags().StringVar(&f.WorkflowDir, "dir", ".github/workflows", "output directory for workflow YAML")

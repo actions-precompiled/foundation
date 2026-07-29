@@ -18,7 +18,7 @@ func PlanVersions(ctx context.Context, deps Deps, meta Meta, cliVersions []strin
 	}
 
 	if deps.GitHub == nil {
-		return nil, fmt.Errorf("plan versions: GitHub client is nil")
+		return nil, fmt.Errorf("plan versions: %w", ErrGitHubNil)
 	}
 
 	deps.Logf("Fetching upstream from %s...", meta.UpstreamRepoAPI)

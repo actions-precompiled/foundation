@@ -34,17 +34,21 @@ func EnsureWorkerBinary(ctx context.Context, deps Deps, goos, goarch string) (pa
 	}
 
 	if deps.Runner == nil {
-		return "", cleanup, fmt.Errorf("EnsureWorkerBinary: Runner is nil")
+		return "", cleanup, fmt.Errorf("EnsureWorkerBinary: %w", ErrRunnerNil)
 	}
 	if deps.WorkDir == "" {
-		return "", cleanup, fmt.Errorf("EnsureWorkerBinary: WorkDir is required")
+		return "", cleanup, fmt.Errorf("%w", ErrWorkerWorkDir)
 	}
 
 	dir, err := deps.FS.TempDir("", "apc-worker-")
 	if err != nil {
 		return "", cleanup, err
 	}
-	cleanup = func() { _ = deps.FS.RemoveAll(dir) }
+	cleanup = func() {
+		if err := deps.FS.RemoveAll(dir); err != nil {
+			deps.Logf("worker cleanup: %v", err)
+		}
+	}
 
 	out := filepath.Join(dir, "apc")
 	if goos == "windows" {
@@ -105,7 +109,7 @@ func TargetGOOSGOARCH(target string) (goos, goarch string) {
 func RunWorkInDocker(ctx context.Context, deps Deps, meta Meta, imageName, imageTag string, req BuildRequest, workerPath string) error {
 	meta = meta.Normalize()
 	if deps.Docker == nil {
-		return fmt.Errorf("RunWorkInDocker: Docker is nil")
+		return fmt.Errorf("RunWorkInDocker: %w", ErrDockerNil)
 	}
 	image := imageName + ":" + imageTag
 	if imageTag == "" {

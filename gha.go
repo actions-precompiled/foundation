@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	iofs "io/fs"
 	"os"
 	"strings"
 )
@@ -92,14 +93,14 @@ func WriteDispatchPlanSummary(env Environ, fs FileSystem, packageName string, ve
 	return AppendStepSummary(env, fs, b.String())
 }
 
-func appendFile(fs FileSystem, path, content string) error {
-	prev, err := fs.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) && !os.IsNotExist(err) {
+func appendFile(fsys FileSystem, path, content string) error {
+	prev, err := fsys.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, iofs.ErrNotExist) {
 		// Some FS mocks return empty error; try write fresh
 		prev = nil
 	}
 	data := append(prev, []byte(content)...)
-	return fs.WriteFile(path, data, 0o644)
+	return fsys.WriteFile(path, data, 0o644)
 }
 
 // CIPlanInput is read from the environment for the `plan` subcommand (GHA plan job).
@@ -120,10 +121,10 @@ func ResolveCIPlan(in CIPlanInput) (version string, publish, recreate, needLates
 	version = strings.TrimSpace(in.Version)
 	if in.EventName == "workflow_dispatch" {
 		if version == "" {
-			return "", false, false, false, fmt.Errorf("version required on workflow_dispatch (use a real upstream tag)")
+			return "", false, false, false, fmt.Errorf("%w", ErrVersionRequired)
 		}
 		if !IsPublishableTag(version) && in.Publish {
-			return "", false, false, false, fmt.Errorf("refusing to publish non-tag %q (tagged releases only)", version)
+			return "", false, false, false, fmt.Errorf("%w: %q", ErrNonTagPublish, version)
 		}
 		publish = in.Publish
 		recreate = in.Recreate && publish
@@ -148,7 +149,7 @@ func RunCIPlan(ctx context.Context, deps Deps, meta Meta, in CIPlanInput) error 
 	}
 	if needLatest {
 		if deps.GitHub == nil {
-			return fmt.Errorf("plan: need latest upstream tag but GitHub client is nil")
+			return fmt.Errorf("%w", ErrLatestTagNeedsGitHub)
 		}
 		version, err = deps.GitHub.LatestReleaseTag(ctx, meta.UpstreamRepoAPI)
 		if err != nil {
@@ -159,14 +160,14 @@ func RunCIPlan(ctx context.Context, deps Deps, meta Meta, in CIPlanInput) error 
 			}
 			tags = SortVersionStrings(tags)
 			if len(tags) == 0 {
-				return fmt.Errorf("no upstream tags for %s", meta.UpstreamRepoAPI)
+				return fmt.Errorf("%w for %s", ErrNoUpstreamTags, meta.UpstreamRepoAPI)
 			}
 			version = tags[len(tags)-1]
 			deps.Logf("plan: LatestReleaseTag failed (%v); using newest listed tag %s", err, version)
 		}
 	}
 	if version == "" {
-		return fmt.Errorf("plan: empty version")
+		return fmt.Errorf("%w", ErrEmptyPlanVersion)
 	}
 	if err := AppendGitHubOutput(deps.Env, deps.FS, map[string]string{
 		"version":  version,

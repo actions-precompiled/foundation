@@ -19,10 +19,10 @@ func NewDefaultDocker(runner Runner) *DefaultDocker {
 
 func (d *DefaultDocker) BuildImage(ctx context.Context, req DockerBuildRequest) error {
 	if req.Image == "" {
-		return fmt.Errorf("docker build: Image is required")
+		return fmt.Errorf("%w", ErrDockerImageRequired)
 	}
 	if req.Context == "" {
-		return fmt.Errorf("docker build: Context is required")
+		return fmt.Errorf("%w", ErrDockerContextRequired)
 	}
 	args := []string{"build", "-t", req.Image}
 	if req.TargetArch != "" {
@@ -37,7 +37,7 @@ func (d *DefaultDocker) BuildImage(ctx context.Context, req DockerBuildRequest) 
 
 func (d *DefaultDocker) Run(ctx context.Context, req DockerRunRequest) error {
 	if req.Image == "" {
-		return fmt.Errorf("docker run: Image is required")
+		return fmt.Errorf("%w", ErrDockerRunImage)
 	}
 	args := []string{"run", "--rm"}
 	if req.User != "" {
@@ -73,7 +73,7 @@ func HostDockerUser() string {
 func StandardDockerBuild(ctx context.Context, deps Deps, meta Meta, cfgImageName, cfgImageTag string, req BuildRequest) error {
 	meta = meta.Normalize()
 	if deps.Docker == nil {
-		return fmt.Errorf("StandardDockerBuild: Docker is nil")
+		return fmt.Errorf("StandardDockerBuild: %w", ErrDockerNil)
 	}
 	image := cfgImageName + ":" + cfgImageTag
 	if cfgImageTag == "" {

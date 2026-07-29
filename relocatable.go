@@ -75,7 +75,7 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 		for _, b := range opts.RequiredBins {
 			p := filepath.Join(prefix, "bin", b)
 			if _, err := os.Stat(p); err != nil {
-				return fmt.Errorf("relocatable check: required bin/%s missing", b)
+				return fmt.Errorf("%w: bin/%s", ErrRelocatableBinMissing, b)
 			}
 			files = append(files, p)
 		}
@@ -91,7 +91,7 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 		}
 	}
 	// Always inspect package shared libraries too (sibling $ORIGIN resolution).
-	_ = filepath.WalkDir(filepath.Join(prefix, "lib"), func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(filepath.Join(prefix, "lib"), func(path string, d os.DirEntry, err error) error {
 		if err != nil || d == nil || d.IsDir() {
 			return nil
 		}
@@ -100,7 +100,9 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 			files = append(files, path)
 		}
 		return nil
-	})
+	}); err != nil {
+		return fmt.Errorf("walk lib: %w", err)
+	}
 
 	checked := 0
 	var problems []string
@@ -118,7 +120,10 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 		}
 		checked++
 		if len(info.Missing) > 0 {
-			rel, _ := filepath.Rel(prefix, path)
+			rel, relErr := filepath.Rel(prefix, path)
+			if relErr != nil {
+				rel = path
+			}
 			problems = append(problems, fmt.Sprintf(
 				"%s: needs %v but RPATH/RUNPATH %q does not resolve them under the package (bundled libs must use $ORIGIN)",
 				rel, info.Missing, info.RPath,
@@ -126,7 +131,7 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 		}
 	}
 	if checked == 0 && len(bundled) > 0 {
-		return fmt.Errorf("relocatable check: package ships %d shared libs but no dynamic ELF under bin/ was inspected", len(bundled))
+		return fmt.Errorf("%w (%d shared libs)", ErrRelocatableNoELF, len(bundled))
 	}
 	if len(problems) > 0 {
 		// Cap error size
@@ -135,7 +140,7 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 			problems = problems[:12]
 			problems = append(problems, fmt.Sprintf("... and %d more", n-12))
 		}
-		return fmt.Errorf("relocatable check failed (%d file(s)):\n  - %s", n, strings.Join(problems, "\n  - "))
+		return fmt.Errorf("%w (%d file(s)):\n  - %s", ErrRelocatableFailed, n, strings.Join(problems, "\n  - "))
 	}
 	return nil
 }
@@ -146,7 +151,7 @@ func CheckLinuxRelocatable(prefix string, opts RelocatableOpts) error {
 func PatchLinuxOriginRPath(ctx context.Context, deps Deps, prefix string) error {
 	prefix = filepath.Clean(prefix)
 	if deps.Runner == nil {
-		return fmt.Errorf("patchelf: Runner is nil")
+		return fmt.Errorf("patchelf: %w", ErrRunnerNil)
 	}
 	if _, err := deps.Runner.Output(ctx, "patchelf", "--version"); err != nil {
 		return fmt.Errorf("patchelf not available: %w", err)
@@ -155,7 +160,7 @@ func PatchLinuxOriginRPath(ctx context.Context, deps Deps, prefix string) error 
 	var targets []string
 	for _, sub := range []string{"bin", "lib"} {
 		root := filepath.Join(prefix, sub)
-		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil || d == nil || d.IsDir() {
 				return nil
 			}
@@ -169,11 +174,16 @@ func PatchLinuxOriginRPath(ctx context.Context, deps Deps, prefix string) error 
 				targets = append(targets, path)
 			}
 			return nil
-		})
+		}); err != nil {
+			return fmt.Errorf("walk %s: %w", sub, err)
+		}
 	}
 
 	for _, path := range targets {
-		rel, _ := filepath.Rel(prefix, path)
+		rel, relErr := filepath.Rel(prefix, path)
+		if relErr != nil {
+			rel = path
+		}
 		rpath := DefaultLinuxRPathBin
 		if strings.HasPrefix(rel, "lib"+string(filepath.Separator)) || rel == "lib" {
 			rpath = DefaultLinuxRPathLib
@@ -211,16 +221,22 @@ func inspectELFRelocatable(path string, bundled map[string]string) (*elfRelocInf
 	defer f.Close()
 
 	if f.Type != elf.ET_EXEC && f.Type != elf.ET_DYN {
-		return nil, fmt.Errorf("not dynamic")
+		return nil, nil // not a dynamic ELF — caller skips
 	}
 	needed, err := f.DynString(elf.DT_NEEDED)
 	if err != nil || len(needed) == 0 {
-		// static or no dynamic deps
-		return nil, fmt.Errorf("no needed")
+		// static or no dynamic deps — caller skips
+		return nil, nil
 	}
 
-	runpath, _ := f.DynString(elf.DT_RUNPATH)
-	rpath, _ := f.DynString(elf.DT_RPATH)
+	runpath, errRun := f.DynString(elf.DT_RUNPATH)
+	if errRun != nil {
+		runpath = nil
+	}
+	rpath, errRP := f.DynString(elf.DT_RPATH)
+	if errRP != nil {
+		rpath = nil
+	}
 	// ELF prefers RUNPATH over RPATH when both exist.
 	search := strings.Join(runpath, ":")
 	if search == "" {
@@ -260,13 +276,10 @@ func isDynamicELF(path string) bool {
 // indexBundledSONAMEs maps "libfoo.so.1" → absolute path for every .so* under prefix.
 func indexBundledSONAMEs(prefix string) map[string]string {
 	out := make(map[string]string)
-	_ = filepath.WalkDir(prefix, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d == nil || d.IsDir() {
-			return nil
-		}
+	if err := walkIgnore(prefix, func(path string, d os.DirEntry) {
 		name := d.Name()
 		if !strings.Contains(name, ".so") {
-			return nil
+			return
 		}
 		// Index basename and common realpath basename.
 		out[name] = path
@@ -275,9 +288,23 @@ func indexBundledSONAMEs(prefix string) map[string]string {
 				out[filepath.Base(target)] = path
 			}
 		}
+	}); err != nil {
+		// best-effort: partial index is still useful
+		return out
+	}
+	return out
+}
+
+// walkIgnore walks root and calls fn for each non-dir entry; walk errors are ignored
+// (best-effort indexing during checks).
+func walkIgnore(root string, fn func(path string, d os.DirEntry)) error {
+	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		fn(path, d)
 		return nil
 	})
-	return out
 }
 
 // expandRPath splits a DT_RUNPATH/RPATH value and expands $ORIGIN / ${ORIGIN}.

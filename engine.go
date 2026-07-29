@@ -18,7 +18,7 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 		deps.WorkDir = cfg.WorkDir
 	}
 	if deps.WorkDir == "" {
-		return fmt.Errorf("WorkDir is required on Deps or Config")
+		return fmt.Errorf("%w", ErrWorkDirRequired)
 	}
 
 	switch cfg.Command {
@@ -29,11 +29,11 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 	case CommandGenerateWorkflow:
 		return GenerateWorkflows(deps, meta, cfg)
 	case CommandPlan:
-		return runPlan(deps, meta, cfg)
+		return runPlan(ctx, deps, meta, cfg)
 	case CommandBuild, CommandSmoke, CommandPublish:
 		// fall through
 	default:
-		return fmt.Errorf("unknown command %q", cfg.Command)
+		return fmt.Errorf("%w: %q", ErrUnknownCommand, cfg.Command)
 	}
 
 	versions, err := PlanVersions(ctx, deps, meta, cfg.Versions, cfg.ForceAll)
@@ -104,7 +104,7 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 	return nil
 }
 
-func runPlan(deps Deps, meta Meta, cfg Config) error {
+func runPlan(ctx context.Context, deps Deps, meta Meta, cfg Config) error {
 	in := CIPlanInput{
 		EventName: deps.Env.Get(EnvGitHubEventName),
 		Version:   firstNonEmpty(firstOf(cfg.Versions), deps.Env.Get("INPUT_VERSION"), deps.Env.Get(EnvVersion)),
@@ -113,7 +113,7 @@ func runPlan(deps Deps, meta Meta, cfg Config) error {
 		// Empty DefaultVersion → latest upstream release tag (tagged releases only).
 		DefaultVersion: deps.Env.Get("APC_DEFAULT_VERSION"),
 	}
-	return RunCIPlan(context.Background(), deps, meta, in)
+	return RunCIPlan(ctx, deps, meta, in)
 }
 
 func firstOf(ss []string) string {
@@ -136,10 +136,10 @@ func runList(ctx context.Context, deps Deps, meta Meta, cfg Config) error {
 
 func runWork(ctx context.Context, p Package, deps Deps, cfg Config) error {
 	if len(cfg.Versions) != 1 {
-		return fmt.Errorf("work requires exactly one version (got %v); set APC_VERSION", cfg.Versions)
+		return fmt.Errorf("%w (got %v)", ErrWorkVersionRequired, cfg.Versions)
 	}
 	if len(cfg.Targets) != 1 {
-		return fmt.Errorf("work requires exactly one target (got %v); set APC_TARGET", cfg.Targets)
+		return fmt.Errorf("%w (got %v)", ErrWorkTargetRequired, cfg.Targets)
 	}
 	req := BuildRequest{
 		Version: cfg.Versions[0],
@@ -155,7 +155,7 @@ func runWork(ctx context.Context, p Package, deps Deps, cfg Config) error {
 
 func ensureImage(ctx context.Context, deps Deps, meta Meta, cfg Config) error {
 	if deps.Docker == nil {
-		return fmt.Errorf("ensure image: Docker client is nil")
+		return fmt.Errorf("ensure image: %w", ErrDockerNil)
 	}
 	image := cfg.ImageName + ":" + cfg.ImageTag
 	arch := HostDockerArch()
@@ -226,7 +226,7 @@ func smokeVersion(ctx context.Context, p Package, deps Deps, meta Meta, cfg Conf
 			return err
 		}
 		if len(tarballs) == 0 {
-			return fmt.Errorf("no tarball for %s / %s under %s", version, target, outDir)
+			return fmt.Errorf("%w: %s / %s under %s", ErrNoTarball, version, target, outDir)
 		}
 		req := SmokeRequest{Version: version, Target: target, OutDir: outDir, Tarballs: tarballs}
 		if err := p.Smoke(ctx, deps, req); err != nil {
@@ -238,10 +238,10 @@ func smokeVersion(ctx context.Context, p Package, deps Deps, meta Meta, cfg Conf
 
 func publishVersion(ctx context.Context, deps Deps, meta Meta, cfg Config, version string) error {
 	if deps.GitHub == nil {
-		return fmt.Errorf("publish: GitHub client is nil")
+		return fmt.Errorf("publish: %w", ErrGitHubNil)
 	}
 	if !IsPublishableTag(version) {
-		return fmt.Errorf("publish: %q is not a tagged release (refusing trunk/main/latest)", version)
+		return fmt.Errorf("publish: %q: %w", version, ErrNotPublishableTag)
 	}
 	var assets []string
 	for _, target := range cfg.Targets {
@@ -253,7 +253,7 @@ func publishVersion(ctx context.Context, deps Deps, meta Meta, cfg Config, versi
 		assets = append(assets, found...)
 	}
 	if len(assets) == 0 {
-		return fmt.Errorf("publish %s: no assets", version)
+		return fmt.Errorf("publish %s: %w", version, ErrNoPublishAssets)
 	}
 	if cfg.Recreate {
 		deps.Logf("Recreate: deleting existing release %s (if any)", version)

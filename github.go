@@ -183,7 +183,7 @@ func (g *DefaultGitHub) LatestReleaseTag(ctx context.Context, ownerRepo string) 
 		return "", err
 	}
 	if item.TagName == "" {
-		return "", fmt.Errorf("latest release for %s has empty tag_name", ownerRepo)
+		return "", fmt.Errorf("%w for %s", ErrEmptyReleaseTag, ownerRepo)
 	}
 	return item.TagName, nil
 }
