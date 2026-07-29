@@ -133,8 +133,8 @@ jobs:
           INPUT_VERSION: @{{github.event.inputs.version}}@
           INPUT_PUBLISH: @{{github.event.inputs.publish}}@
           INPUT_RECREATE: @{{github.event.inputs.recreate}}@
-          # GITHUB_EVENT_NAME is set by Actions; also pass explicit alias
           GITHUB_EVENT_NAME: @{{github.event_name}}@
+          GH_TOKEN: @{{secrets.GITHUB_TOKEN}}@
         run: mise exec -- go run . plan
 
 
