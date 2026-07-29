@@ -19,6 +19,14 @@ type Package interface {
 	Smoke(ctx context.Context, deps Deps, req SmokeRequest) error
 }
 
+// HostPrep is an optional extension packages may implement.
+// Run calls PrepHost once after config resolve and before image/build work,
+// so the Go payload can free disk, install host tools, etc. based on GOOS —
+// CI stays a thin "go run" matrix.
+type HostPrep interface {
+	PrepHost(ctx context.Context, deps Deps, cfg Config) error
+}
+
 // Meta is static package identity. Prefer filling fields in code over env overrides.
 type Meta struct {
 	// Name is the short package name used in artifact names and release titles.

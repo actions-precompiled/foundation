@@ -59,6 +59,13 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 		return nil
 	}
 
+	// Optional host prep (disk free, bootstrap tools). Packages use runtime.GOOS.
+	if hp, ok := p.(HostPrep); ok {
+		if err := hp.PrepHost(ctx, deps, cfg); err != nil {
+			return fmt.Errorf("prep host: %w", err)
+		}
+	}
+
 	if cfg.SmokeOnly {
 		for _, version := range versions {
 			if err := smokeVersion(ctx, p, deps, meta, cfg, version); err != nil {
@@ -70,12 +77,16 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 		return nil
 	}
 
-	if !cfg.SkipImageBuild {
+	needDocker := TargetsNeedDocker(cfg.Targets)
+	switch {
+	case cfg.SkipImageBuild:
+		deps.Logf("APC_SKIP_IMAGE_BUILD set — using existing %s:%s", cfg.ImageName, cfg.ImageTag)
+	case !needDocker:
+		deps.Logf("no docker targets in matrix — skipping image build")
+	default:
 		if err := ensureImage(ctx, deps, meta, cfg); err != nil {
 			return err
 		}
-	} else {
-		deps.Logf("APC_SKIP_IMAGE_BUILD set — using existing %s:%s", cfg.ImageName, cfg.ImageTag)
 	}
 
 	for _, version := range versions {

@@ -67,3 +67,19 @@ func ResolveTargets(env Environ, meta Meta) []string {
 	}
 	return []string{HostTarget()}
 }
+
+// IsWindowsTarget reports windows-* matrix targets.
+func IsWindowsTarget(target string) bool {
+	return strings.HasPrefix(target, "windows-")
+}
+
+// TargetsNeedDocker is true when any target is built via the Linux docker path
+// (i.e. not a windows-* target). Used to skip docker image builds on pure Windows runs.
+func TargetsNeedDocker(targets []string) bool {
+	for _, t := range targets {
+		if t != "" && !IsWindowsTarget(t) {
+			return true
+		}
+	}
+	return false
+}
