@@ -213,9 +213,5 @@ func (g *DefaultGitHub) DeleteRelease(ctx context.Context, tag string) error {
 }
 
 func (g *DefaultGitHub) logf(format string, args ...any) {
-	w := g.Stderr
-	if w == nil {
-		w = os.Stderr
-	}
-	fmt.Fprintf(w, format+"\n", args...)
+	WriteLine(g.Stderr, os.Stderr, format, args...)
 }

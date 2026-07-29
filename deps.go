@@ -2,7 +2,6 @@ package foundation
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 )
@@ -101,22 +100,4 @@ type FileSystem interface {
 	Glob(pattern string) ([]string, error)
 	WriteFile(name string, data []byte, perm os.FileMode) error
 	ReadFile(name string) ([]byte, error)
-}
-
-// Logf writes a formatted line to Deps.Stderr.
-func (d Deps) Logf(format string, args ...any) {
-	w := d.Stderr
-	if w == nil {
-		w = os.Stderr
-	}
-	fmt.Fprintf(w, format+"\n", args...)
-}
-
-// Outf writes a formatted line to Deps.Stdout.
-func (d Deps) Outf(format string, args ...any) {
-	w := d.Stdout
-	if w == nil {
-		w = os.Stdout
-	}
-	fmt.Fprintf(w, format+"\n", args...)
 }

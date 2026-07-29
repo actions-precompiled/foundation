@@ -44,11 +44,7 @@ func EnsureWorkerBinary(ctx context.Context, deps Deps, goos, goarch string) (pa
 	if err != nil {
 		return "", cleanup, err
 	}
-	cleanup = func() {
-		if err := deps.FS.RemoveAll(dir); err != nil {
-			deps.Logf("worker cleanup: %v", err)
-		}
-	}
+	cleanup = func() { deps.RemoveAllLog(dir, "worker cleanup") }
 
 	out := filepath.Join(dir, "apc")
 	if goos == "windows" {

@@ -45,11 +45,7 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := deps.FS.RemoveAll(tmp); err != nil {
-			deps.Logf("smoke cleanup: %v", err)
-		}
-	}()
+	defer deps.RemoveAllLog(tmp, "smoke cleanup")
 
 	if err := extractTarGz(tarball, tmp); err != nil {
 		return fmt.Errorf("extract %s: %w", tarball, err)
@@ -86,7 +82,7 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 	var lastCode error
 	tried := [][]string{{"--help"}, {"--version"}, {"-V"}, {"-h"}}
 	for _, args := range tried {
-		out, err := runWithEnv(ctx, deps, env, binPath, args...)
+		out, err := OutputWithEnvTimeout(ctx, deps, env, 60*time.Second, binPath, args...)
 		lastOut = out
 		lastCode = err
 		for i, line := range strings.Split(out, "\n") {
@@ -148,16 +144,6 @@ func guessTargetFromTarball(tarball string) string {
 	return ""
 }
 
-func runWithEnv(ctx context.Context, deps Deps, env []string, name string, args ...string) (string, error) {
-	// Bound runtime for smoke.
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	if rw, ok := deps.Runner.(RunnerWithOpts); ok {
-		return rw.OutputWith(ctx, RunOpts{Env: env}, name, args...)
-	}
-	return deps.Runner.Output(ctx, name, args...)
-}
 
 func extractTarGz(src, dst string) error {
 	f, err := os.Open(src)

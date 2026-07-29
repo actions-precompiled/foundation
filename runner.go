@@ -24,11 +24,30 @@ func NewDefaultRunner(stderrW io.Writer) *DefaultRunner {
 }
 
 func (r *DefaultRunner) log(name string, args []string) {
-	w := r.Stderr
-	if w == nil {
-		w = os.Stderr
+	WriteLine(r.Stderr, os.Stderr, "+ %s", strings.Join(append([]string{name}, args...), " "))
+}
+
+// command builds an *exec.Cmd with RunOpts applied (shared by RunWith/OutputWith).
+func (r *DefaultRunner) command(ctx context.Context, opts RunOpts, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if opts.Dir != "" {
+		cmd.Dir = opts.Dir
 	}
-	fmt.Fprintf(w, "+ %s\n", strings.Join(append([]string{name}, args...), " "))
+	if opts.Env != nil {
+		cmd.Env = opts.Env
+	}
+	cmd.Stdin = opts.Stdin
+	return cmd
+}
+
+func (r *DefaultRunner) stderrFor(opts RunOpts) io.Writer {
+	if opts.Stderr != nil {
+		return opts.Stderr
+	}
+	if r.Stderr != nil {
+		return r.Stderr
+	}
+	return os.Stderr
 }
 
 func (r *DefaultRunner) Run(ctx context.Context, name string, args ...string) error {
@@ -41,26 +60,13 @@ func (r *DefaultRunner) Output(ctx context.Context, name string, args ...string)
 
 func (r *DefaultRunner) RunWith(ctx context.Context, opts RunOpts, name string, args ...string) error {
 	r.log(name, args)
-	cmd := exec.CommandContext(ctx, name, args...)
-	if opts.Dir != "" {
-		cmd.Dir = opts.Dir
-	}
-	if opts.Env != nil {
-		cmd.Env = opts.Env
-	}
-	cmd.Stdin = opts.Stdin
+	cmd := r.command(ctx, opts, name, args...)
 	if opts.Stdout != nil {
 		cmd.Stdout = opts.Stdout
 	} else {
 		cmd.Stdout = os.Stdout
 	}
-	if opts.Stderr != nil {
-		cmd.Stderr = opts.Stderr
-	} else if r.Stderr != nil {
-		cmd.Stderr = r.Stderr
-	} else {
-		cmd.Stderr = os.Stderr
-	}
+	cmd.Stderr = r.stderrFor(opts)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
@@ -69,23 +75,10 @@ func (r *DefaultRunner) RunWith(ctx context.Context, opts RunOpts, name string, 
 
 func (r *DefaultRunner) OutputWith(ctx context.Context, opts RunOpts, name string, args ...string) (string, error) {
 	r.log(name, args)
-	cmd := exec.CommandContext(ctx, name, args...)
-	if opts.Dir != "" {
-		cmd.Dir = opts.Dir
-	}
-	if opts.Env != nil {
-		cmd.Env = opts.Env
-	}
-	cmd.Stdin = opts.Stdin
+	cmd := r.command(ctx, opts, name, args...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
-	if opts.Stderr != nil {
-		cmd.Stderr = opts.Stderr
-	} else if r.Stderr != nil {
-		cmd.Stderr = r.Stderr
-	} else {
-		cmd.Stderr = os.Stderr
-	}
+	cmd.Stderr = r.stderrFor(opts)
 	if err := cmd.Run(); err != nil {
 		return stdout.String(), fmt.Errorf("%s: %w", name, err)
 	}

@@ -56,6 +56,23 @@ Writes:
   `go run . build <version>`
 - `.github/workflows/dispatch-missing.yml` — `go run . list` → `gh workflow run Build`
 
+## Atoms vs packages
+
+Foundation owns **atoms** — small, standardized primitives packages compose:
+
+| Atom | Role |
+|------|------|
+| `OutputWithEnv` / `CleanSmokeEnv` | Run tools with an explicit env (no `LD_LIBRARY_PATH` hacks) |
+| `CheckLinuxRelocatable` / `PatchLinuxOriginRPath` | Self-contained ELF `$ORIGIN` trees |
+| `WriteLine` / `Deps.Logf` / `Deps.Outf` | Consistent line logging |
+| `Deps.RemoveAllLog` | Best-effort cleanup with log |
+| `DefaultRunner` (`command` + Run/Output) | One place for process wiring |
+| plan / publish / workflow gen | CI plumbing |
+
+Packages own **molecules** — product policy (which utils to smoke, cmake flags,
+Windows sysroot). They should not push package-specific control flow into
+foundation; they call atoms and keep OS/package rules local.
+
 ## Relocatable Linux (RPATH)
 
 Packages that ship shared libs must be runnable **without** `LD_LIBRARY_PATH`:
