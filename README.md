@@ -23,6 +23,7 @@ type Package interface {
 ## CLI (Cobra)
 
 ```bash
+go run . plan                  # CI plan job → GITHUB_OUTPUT + step summary
 go run . list                 # missing upstream tags (one per line)
 go run . list --all           # all upstream tags
 go run . build trunk          # build (injects binary into docker for linux)

@@ -28,6 +28,8 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 		return runWork(ctx, p, deps, cfg)
 	case CommandGenerateWorkflow:
 		return GenerateWorkflows(deps, meta, cfg)
+	case CommandPlan:
+		return runPlan(deps, meta, cfg)
 	case CommandBuild, CommandSmoke, CommandPublish:
 		// fall through
 	default:
@@ -100,6 +102,28 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 	}
 	deps.Logf("✓ All requested builds finished")
 	return nil
+}
+
+func runPlan(deps Deps, meta Meta, cfg Config) error {
+	in := CIPlanInput{
+		EventName:      deps.Env.Get(EnvGitHubEventName),
+		Version:        firstNonEmpty(firstOf(cfg.Versions), deps.Env.Get("INPUT_VERSION"), deps.Env.Get(EnvVersion)),
+		Publish:        ParseEnvBool(deps.Env.Get("INPUT_PUBLISH")) || cfg.Publish,
+		Recreate:       ParseEnvBool(deps.Env.Get("INPUT_RECREATE")) || cfg.Recreate,
+		DefaultVersion: "trunk",
+	}
+	// optional: allow override default via env APC_DEFAULT_VERSION
+	if d := deps.Env.Get("APC_DEFAULT_VERSION"); d != "" {
+		in.DefaultVersion = d
+	}
+	return RunCIPlan(deps, meta, in)
+}
+
+func firstOf(ss []string) string {
+	if len(ss) == 0 {
+		return ""
+	}
+	return ss[0]
 }
 
 func runList(ctx context.Context, deps Deps, meta Meta, cfg Config) error {

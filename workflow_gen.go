@@ -126,36 +126,17 @@ jobs:
       publish: @{{steps.plan.outputs.publish}}@
       recreate: @{{steps.plan.outputs.recreate}}@
     steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
       - id: plan
         env:
           INPUT_VERSION: @{{github.event.inputs.version}}@
           INPUT_PUBLISH: @{{github.event.inputs.publish}}@
           INPUT_RECREATE: @{{github.event.inputs.recreate}}@
-          EVENT_NAME: @{{github.event_name}}@
-        run: |
-          set -euo pipefail
-          version="${INPUT_VERSION:-}"
-          publish=false
-          recreate=false
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            case "${INPUT_PUBLISH:-false}" in true|1|yes) publish=true ;; esac
-            case "${INPUT_RECREATE:-false}" in true|1|yes) recreate=true ;; esac
-            [[ -n "$version" ]] || { echo "version required on workflow_dispatch" >&2; exit 1; }
-          else
-            version="${version:-trunk}"
-          fi
-          {
-            echo "version=$version"
-            echo "publish=$publish"
-            echo "recreate=$recreate"
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "## Build plan"
-            echo ""
-            echo "- Package: `+"`%s`"+`"
-            echo "- Version: `+"`$version`"+`"
-            echo "- Publish: **$publish**"
-          } >> "$GITHUB_STEP_SUMMARY"
+          # GITHUB_EVENT_NAME is set by Actions; also pass explicit alias
+          GITHUB_EVENT_NAME: @{{github.event_name}}@
+        run: mise exec -- go run . plan
+
 
   build:
     needs: plan
@@ -217,7 +198,7 @@ jobs:
           recreate_flag=
           case "@{{needs.plan.outputs.recreate}}@" in true|1|yes) recreate_flag=--recreate ;; esac
           mise exec -- go run . publish $recreate_flag "@{{needs.plan.outputs.version}}@"
-`, name, name, matrix, name, targetsJoined)
+`, name, matrix, name, targetsJoined)
 }
 
 func renderDispatchWorkflow(name string) string {

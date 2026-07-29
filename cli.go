@@ -117,6 +117,22 @@ The same Go binary is the host orchestrator and the in-container worker:
 		}
 	}
 
+	planCmd := &cobra.Command{
+		Use:   "plan [version]",
+		Short: "CI plan job: write GITHUB_OUTPUT + step summary (all in Go)",
+		Long: `Used by generated build.yml plan step:
+
+  mise exec -- go run . plan
+
+Reads GITHUB_EVENT_NAME, INPUT_VERSION, INPUT_PUBLISH, INPUT_RECREATE
+(or flags/APC_*) and writes version/publish/recreate to GITHUB_OUTPUT
+plus a markdown Build plan to GITHUB_STEP_SUMMARY.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: run(CommandPlan),
+	}
+	planCmd.Flags().BoolVar(&f.Publish, "publish", false, "publish (or INPUT_PUBLISH)")
+	planCmd.Flags().BoolVar(&f.Recreate, "recreate", false, "recreate (or INPUT_RECREATE)")
+
 	listCmd := &cobra.Command{
 		Use:     "list [versions...]",
 		Aliases: []string{"list-to-build"},
@@ -208,6 +224,6 @@ Matrix targets come from Meta.DefaultTargets (or linux-amd64/aarch64 defaults).`
 	genWorkflowCmd.Flags().BoolVar(&f.ForceWrite, "force", false, "overwrite existing workflow files")
 	genCmd.AddCommand(genWorkflowCmd)
 
-	root.AddCommand(listCmd, buildCmd, smokeCmd, publishCmd, workCmd, genCmd)
+	root.AddCommand(planCmd, listCmd, buildCmd, smokeCmd, publishCmd, workCmd, genCmd)
 	return root
 }

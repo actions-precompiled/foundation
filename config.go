@@ -16,6 +16,7 @@ const (
 	CommandPublish          Command = "publish"
 	CommandWork             Command = "work"
 	CommandGenerateWorkflow Command = "generate-workflow"
+	CommandPlan             Command = "plan"
 )
 
 // Config is the fully resolved configuration for one invocation.
@@ -110,7 +111,7 @@ func ResolveConfig(env Environ, meta Meta, flags Flags, cmd Command) (Config, er
 	} else {
 		cfg.Targets = ResolveTargets(env, meta)
 	}
-	if cmd != CommandList && cmd != CommandGenerateWorkflow && cmd != CommandWork {
+	if cmd != CommandList && cmd != CommandGenerateWorkflow && cmd != CommandWork && cmd != CommandPlan {
 		if len(cfg.Targets) == 0 {
 			return Config{}, fmt.Errorf("no targets resolved")
 		}
