@@ -24,6 +24,10 @@ const (
 	EnvGitHubToken    = "GH_TOKEN" // also GITHUB_TOKEN via Lookup chain
 	EnvGitHubTokenAlt = "GITHUB_TOKEN"
 	EnvGitHubRepo     = "GITHUB_REPOSITORY"
+	EnvVersion        = "APC_VERSION"
+	EnvTarget         = "APC_TARGET"
+	EnvOutputDir      = "APC_OUTPUT_DIR"
+	EnvInContainer    = "APC_IN_CONTAINER"
 )
 
 // OSEnviron is the real process environment.

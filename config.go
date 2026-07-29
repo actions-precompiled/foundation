@@ -6,70 +6,80 @@ import (
 	"strings"
 )
 
-// Config is the fully resolved CLI/engine configuration for one invocation.
-// Built from argv + APC_* env — never from templated run lines.
-type Config struct {
-	// Versions are explicit tags from argv. Empty means plan from upstream.
-	Versions []string
+// Command is the CLI verb after cobra routing.
+type Command string
 
-	Targets []string
+const (
+	CommandList             Command = "list"
+	CommandBuild            Command = "build"
+	CommandSmoke            Command = "smoke"
+	CommandPublish          Command = "publish"
+	CommandWork             Command = "work"
+	CommandGenerateWorkflow Command = "generate-workflow"
+)
+
+// Config is the fully resolved configuration for one invocation.
+type Config struct {
+	Command Command
+
+	Versions []string
+	Targets  []string
 
 	Publish        bool
 	DryRun         bool
 	SkipSmoke      bool
-	SmokeOnly      bool
-	ListToBuild    bool
-	ForceAll       bool // all upstream tags (recreate fan-out)
+	ForceAll       bool
 	SkipImageBuild bool
-	Recreate       bool // delete+recreate release when publishing
+	Recreate       bool
 
 	BuildOutputDir string
-	ImageName      string // override Meta.ImageName when set
+	ImageName      string
 	ImageTag       string
+	WorkDir        string
 
-	// WorkDir package root; empty → deps.WorkDir / cwd.
-	WorkDir string
+	// Generate workflow options
+	WorkflowDir string
+	ForceWrite  bool
 }
 
-// Flags are parsed CLI switches before merging with environment.
+// Flags are shared optional flags merged with APC_* env.
 type Flags struct {
 	Versions       []string
 	Publish        bool
 	DryRun         bool
 	SkipSmoke      bool
-	SmokeOnly      bool
-	ListToBuild    bool
 	All            bool
 	SkipImageBuild bool
 	Recreate       bool
-	// Targets raw override (optional flag); empty means use env/meta.
-	Targets string
-	// BuildOutputDir optional flag.
+	Targets        string
 	BuildOutputDir string
 	ImageName      string
 	ImageTag       string
 	WorkDir        string
+	WorkflowDir    string
+	ForceWrite     bool
 }
 
 // ResolveConfig merges flags, APC_* env, and package meta into a Config.
-func ResolveConfig(env Environ, meta Meta, flags Flags) (Config, error) {
+func ResolveConfig(env Environ, meta Meta, flags Flags, cmd Command) (Config, error) {
 	meta = meta.Normalize()
 	if err := meta.Validate(); err != nil {
 		return Config{}, err
 	}
 
 	cfg := Config{
+		Command:        cmd,
 		Versions:       append([]string(nil), flags.Versions...),
 		Publish:        flags.Publish || EnvFlag(env, EnvPublish),
 		DryRun:         flags.DryRun || EnvFlag(env, EnvDryRun),
 		SkipSmoke:      flags.SkipSmoke || EnvFlag(env, EnvSkipSmoke),
-		SmokeOnly:      flags.SmokeOnly,
-		ListToBuild:    flags.ListToBuild,
 		ForceAll:       flags.All || EnvFlag(env, EnvRecreate) || EnvFlag(env, EnvForceAll),
 		SkipImageBuild: flags.SkipImageBuild || EnvFlag(env, EnvSkipImageBuild),
 		Recreate:       flags.Recreate || EnvFlag(env, EnvRecreate),
 		ImageTag:       firstNonEmpty(flags.ImageTag, env.Get(EnvImageTag), "local"),
 		WorkDir:        firstNonEmpty(flags.WorkDir, env.Get(EnvWorkDir)),
+		WorkflowDir:    firstNonEmpty(flags.WorkflowDir, ".github/workflows"),
+		ForceWrite:     flags.ForceWrite,
 	}
 
 	cfg.ImageName = firstNonEmpty(flags.ImageName, env.Get(EnvImageName), meta.ImageName)
@@ -90,11 +100,36 @@ func ResolveConfig(env Environ, meta Meta, flags Flags) (Config, error) {
 
 	if flags.Targets != "" {
 		cfg.Targets = ParseTargets(flags.Targets)
+	} else if t := env.Get(EnvTargets); t != "" {
+		cfg.Targets = ParseTargets(t)
+	} else if cmd == CommandWork {
+		// work reads single target from BUILD_TARGET / APC_TARGET
+		if bt := firstNonEmpty(env.Get(EnvTarget), env.Get("BUILD_TARGET")); bt != "" {
+			cfg.Targets = []string{bt}
+		}
 	} else {
 		cfg.Targets = ResolveTargets(env, meta)
 	}
-	if len(cfg.Targets) == 0 {
-		return Config{}, fmt.Errorf("no targets resolved")
+	if cmd != CommandList && cmd != CommandGenerateWorkflow && cmd != CommandWork {
+		if len(cfg.Targets) == 0 {
+			return Config{}, fmt.Errorf("no targets resolved")
+		}
+	}
+
+	// work: version from env if not on argv
+	if cmd == CommandWork && len(cfg.Versions) == 0 {
+		if v := firstNonEmpty(env.Get(EnvVersion), env.Get("PACKAGE_VERSION"), env.Get(meta.VersionEnv)); v != "" {
+			cfg.Versions = []string{v}
+		}
+	}
+	if cmd == CommandWork {
+		if od := firstNonEmpty(env.Get(EnvOutputDir), env.Get("OUTPUT_DIR")); od != "" {
+			abs, err := filepath.Abs(od)
+			if err != nil {
+				return Config{}, err
+			}
+			cfg.BuildOutputDir = abs
+		}
 	}
 
 	return cfg, nil

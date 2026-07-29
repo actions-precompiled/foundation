@@ -24,11 +24,11 @@ func (f *fakePkg) Meta() foundation.Meta {
 		ImageName:       "example-buildenv",
 		Binary:          "example",
 		VersionEnv:      "EXAMPLE_VERSION",
-		DefaultTargets:  []string{foundation.TargetLinuxAMD64},
+		DefaultTargets:  []string{"windows-amd64"},
 	}
 }
 
-func (f *fakePkg) Build(_ context.Context, deps foundation.Deps, req foundation.BuildRequest) error {
+func (f *fakePkg) Work(_ context.Context, deps foundation.Deps, req foundation.BuildRequest) error {
 	f.builds = append(f.builds, req.Version+"/"+req.Target)
 	// Write a placeholder tarball path content (empty gz is fine for find; smoke skipped)
 	name := foundation.ArtifactName("example", req.Version, req.Target)
@@ -111,7 +111,7 @@ func TestMainWithListToBuildMissing(t *testing.T) {
 	docker := &fakeDocker{}
 	deps, stdout, _ := testDeps(t, foundation.MapEnviron{}, gh, docker)
 
-	err := foundation.MainWith(pkg, deps, []string{"--list-to-build"})
+	err := foundation.MainWith(pkg, deps, []string{"list"})
 	if err != nil {
 		t.Fatalf("MainWith: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestMainWithListToBuildAll(t *testing.T) {
 	}
 	deps, stdout, _ := testDeps(t, foundation.MapEnviron{}, gh, &fakeDocker{})
 
-	err := foundation.MainWith(pkg, deps, []string{"--list-to-build", "--all"})
+	err := foundation.MainWith(pkg, deps, []string{"list", "--all"})
 	if err != nil {
 		t.Fatalf("MainWith: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestMainWithDryRunExplicitVersion(t *testing.T) {
 	pkg := &fakePkg{}
 	deps, _, stderr := testDeps(t, foundation.MapEnviron{}, fakeGitHub{}, &fakeDocker{})
 
-	err := foundation.MainWith(pkg, deps, []string{"--dry-run", "v9.9.9"})
+	err := foundation.MainWith(pkg, deps, []string{"build", "--dry-run", "v9.9.9"})
 	if err != nil {
 		t.Fatalf("MainWith: %v", err)
 	}
@@ -170,11 +170,11 @@ func TestMainWithBuildAndSmoke(t *testing.T) {
 	}
 	deps, _, _ := testDeps(t, env, fakeGitHub{}, docker)
 
-	err := foundation.MainWith(pkg, deps, []string{"v1.2.3", "--skip-image-build"})
+	err := foundation.MainWith(pkg, deps, []string{"build", "--skip-image-build", "v1.2.3"})
 	if err != nil {
 		t.Fatalf("MainWith: %v", err)
 	}
-	if len(pkg.builds) != 1 || pkg.builds[0] != "v1.2.3/"+foundation.TargetLinuxAMD64 {
+	if len(pkg.builds) != 1 || pkg.builds[0] != "v1.2.3/windows-amd64" {
 		t.Fatalf("builds: %v", pkg.builds)
 	}
 	if len(pkg.smokes) != 1 {
@@ -188,13 +188,13 @@ func TestMainWithBuildAndSmoke(t *testing.T) {
 func TestMainWithAPCTargetsEnv(t *testing.T) {
 	pkg := &fakePkg{}
 	env := foundation.MapEnviron{
-		foundation.EnvTargets:        foundation.TargetLinuxAMD64 + " " + foundation.TargetLinuxAArch64,
+		foundation.EnvTargets:        "windows-amd64 windows-arm64",
 		foundation.EnvSkipImageBuild: "1",
 		foundation.EnvSkipSmoke:      "1",
 	}
 	deps, _, _ := testDeps(t, env, fakeGitHub{}, &fakeDocker{})
 
-	err := foundation.MainWith(pkg, deps, []string{"v0.1.0"})
+	err := foundation.MainWith(pkg, deps, []string{"build", "--skip-smoke", "v0.1.0"})
 	if err != nil {
 		t.Fatalf("MainWith: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestMainWithAPCTargetsEnv(t *testing.T) {
 }
 
 func TestResolveConfigRequiresMeta(t *testing.T) {
-	_, err := foundation.ResolveConfig(foundation.MapEnviron{}, foundation.Meta{}, foundation.Flags{})
+	_, err := foundation.ResolveConfig(foundation.MapEnviron{}, foundation.Meta{}, foundation.Flags{}, foundation.CommandBuild)
 	if err == nil {
 		t.Fatal("expected error for empty meta")
 	}

@@ -66,6 +66,7 @@ func HostDockerUser() string {
 	return strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid())
 }
 
+// StandardDockerBuild is deprecated: prefer engine inject via RunWorkInDocker + Package.Work.
 // StandardDockerBuild runs the common actions-precompiled container build:
 // mounts OutDir at /out, passes version env vars, uses Meta + BuildRequest.
 // Packages can call this from Package.Build instead of hand-rolling docker args.

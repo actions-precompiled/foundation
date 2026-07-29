@@ -2,15 +2,13 @@ package foundation
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"io"
 	"os"
-	"strings"
+
+	"github.com/spf13/cobra"
 )
 
 // Main is the production entrypoint: DefaultDeps + os.Args + process exit.
-// Package repos typically call foundation.Main(myPackage{}) from main.
 func Main(p Package) {
 	if err := MainWith(p, DefaultDeps("."), os.Args[1:]); err != nil {
 		code := 1
@@ -40,27 +38,10 @@ func AsExitError(err error, target **ExitError) bool {
 	return true
 }
 
-// MainWith runs the CLI against an injected Package, Deps, and argv (no os.Exit).
-// Returns an error for failures; callers map it to exit codes.
+// MainWith runs the Cobra CLI against an injected Package, Deps, and argv (no os.Exit).
 func MainWith(p Package, deps Deps, args []string) error {
-	flags, err := parseFlags(args, deps.Stderr)
-	if err != nil {
-		return err
-	}
-
-	env := deps.Env
-	if env == nil {
-		env = OSEnviron{}
-	}
-
-	meta := p.Meta()
-	cfg, err := ResolveConfig(env, meta, flags)
-	if err != nil {
-		return err
-	}
-
-	if cfg.WorkDir != "" {
-		deps.WorkDir = cfg.WorkDir
+	if deps.Env == nil {
+		deps.Env = OSEnviron{}
 	}
 	if deps.WorkDir == "" {
 		wd, err := os.Getwd()
@@ -69,90 +50,164 @@ func MainWith(p Package, deps Deps, args []string) error {
 		}
 		deps.WorkDir = wd
 	}
-
-	// Rebind GitHub/Docker default clients with workdir/stderr if still default-shaped.
 	deps = finalizeDeps(deps)
 
-	ctx := context.Background()
-	return Run(ctx, p, deps, cfg)
-}
-
-// flagsWithValue are long option names that consume the next argv token.
-var flagsWithValue = map[string]bool{
-	"targets":    true,
-	"output-dir": true,
-	"image-name": true,
-	"image-tag":  true,
-	"workdir":    true,
-}
-
-// reorderArgs moves flags before positional versions so flag.FlagSet can parse
-// invocations like: create_releases v1.2.3 --skip-smoke
-func reorderArgs(args []string) []string {
-	var flags, positional []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
-			positional = append(positional, args[i+1:]...)
-			break
-		}
-		if !strings.HasPrefix(a, "-") || a == "-" {
-			positional = append(positional, a)
-			continue
-		}
-		flags = append(flags, a)
-		// --name=value already self-contained
-		if strings.Contains(a, "=") {
-			continue
-		}
-		name := strings.TrimLeft(a, "-")
-		if flagsWithValue[name] && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-			i++
-			flags = append(flags, args[i])
-		}
+	root := newRootCmd(p, deps)
+	root.SetArgs(args)
+	if deps.Stdout != nil {
+		root.SetOut(deps.Stdout)
 	}
-	return append(flags, positional...)
+	if deps.Stderr != nil {
+		root.SetErr(deps.Stderr)
+	}
+	return root.Execute()
 }
 
-func parseFlags(args []string, errW io.Writer) (Flags, error) {
-	if errW == nil {
-		errW = os.Stderr
-	}
-	fs := flag.NewFlagSet("foundation", flag.ContinueOnError)
-	fs.SetOutput(errW)
-
+func newRootCmd(p Package, deps Deps) *cobra.Command {
 	var f Flags
-	fs.BoolVar(&f.Publish, "publish", false, "create GitHub releases and upload tarballs (also: APC_PUBLISH=1)")
-	fs.BoolVar(&f.DryRun, "dry-run", false, "list versions/targets and exit (also: APC_DRY_RUN=1)")
-	fs.BoolVar(&f.SkipSmoke, "skip-smoke", false, "skip post-build smoke tests (also: APC_SKIP_SMOKE=1)")
-	fs.BoolVar(&f.SmokeOnly, "smoke-only", false, "only smoke-test existing tarballs under target/")
-	fs.BoolVar(&f.ListToBuild, "list-to-build", false, "print versions that would be built, one per line")
-	fs.BoolVar(&f.All, "all", false, "with empty version list: all upstream tags (also: APC_RECREATE / APC_FORCE_ALL)")
-	fs.BoolVar(&f.SkipImageBuild, "skip-image-build", false, "use existing docker image (also: APC_SKIP_IMAGE_BUILD=1)")
-	fs.BoolVar(&f.Recreate, "recreate", false, "delete existing release before publish (also: APC_RECREATE=1)")
-	fs.StringVar(&f.Targets, "targets", "", "space-separated targets (also: APC_TARGETS)")
-	fs.StringVar(&f.BuildOutputDir, "output-dir", "", "artifact root directory (also: APC_BUILD_OUTPUT_DIR)")
-	fs.StringVar(&f.ImageName, "image-name", "", "docker image name override (also: APC_IMAGE_NAME)")
-	fs.StringVar(&f.ImageTag, "image-tag", "", "docker image tag (also: APC_IMAGE_TAG, default local)")
-	fs.StringVar(&f.WorkDir, "workdir", "", "package repo root (also: APC_WORK_DIR)")
 
-	fs.Usage = func() {
-		fmt.Fprintf(errW, "Usage: %s [flags] [versions...]\n\n", fs.Name())
-		fmt.Fprintf(errW, "Build precompiled package tarballs. Local by default; --publish uploads releases.\n\n")
-		fmt.Fprintf(errW, "Configuration uses flags or APC_* environment variables (no package.toml templating).\n\n")
-		fs.PrintDefaults()
+	root := &cobra.Command{
+		Use:   "apc",
+		Short: "actions-precompiled package CLI (foundation)",
+		Long: `Build, list, smoke-test, publish, and generate CI for a package.
+
+The same Go binary is the host orchestrator and the in-container worker:
+  host:   apc build trunk
+  docker: mounts this binary as /apc and runs: /apc work
+`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 
-	if err := fs.Parse(reorderArgs(args)); err != nil {
-		return Flags{}, err
+	// persistent flags
+	pf := root.PersistentFlags()
+	pf.StringVar(&f.WorkDir, "workdir", "", "package repo root (APC_WORK_DIR)")
+	pf.StringVar(&f.Targets, "targets", "", "space-separated targets (APC_TARGETS)")
+	pf.StringVar(&f.BuildOutputDir, "output-dir", "", "artifact root (APC_BUILD_OUTPUT_DIR)")
+	pf.StringVar(&f.ImageName, "image-name", "", "docker image name (APC_IMAGE_NAME)")
+	pf.StringVar(&f.ImageTag, "image-tag", "", "docker image tag (APC_IMAGE_TAG)")
+
+	bindVersions := func(cmd *cobra.Command) {
+		cmd.Flags().BoolVar(&f.All, "all", false, "with empty versions: all upstream tags (APC_RECREATE / APC_FORCE_ALL)")
 	}
-	f.Versions = fs.Args()
-	out := f.Versions[:0]
-	for _, v := range f.Versions {
-		if strings.TrimSpace(v) != "" {
-			out = append(out, strings.TrimSpace(v))
+	bindBuildFlags := func(cmd *cobra.Command) {
+		cmd.Flags().BoolVar(&f.Publish, "publish", false, "create GitHub releases (APC_PUBLISH)")
+		cmd.Flags().BoolVar(&f.DryRun, "dry-run", false, "plan only (APC_DRY_RUN)")
+		cmd.Flags().BoolVar(&f.SkipSmoke, "skip-smoke", false, "skip smoke (APC_SKIP_SMOKE)")
+		cmd.Flags().BoolVar(&f.SkipImageBuild, "skip-image-build", false, "reuse docker image (APC_SKIP_IMAGE_BUILD)")
+		cmd.Flags().BoolVar(&f.Recreate, "recreate", false, "delete release before publish (APC_RECREATE)")
+	}
+
+	run := func(cmd Command) func(*cobra.Command, []string) error {
+		return func(c *cobra.Command, args []string) error {
+			f.Versions = args
+			d := deps
+			if f.WorkDir != "" {
+				d.WorkDir = f.WorkDir
+			}
+			d = finalizeDeps(d)
+			cfg, err := ResolveConfig(d.Env, p.Meta(), f, cmd)
+			if err != nil {
+				return err
+			}
+			if cfg.WorkDir != "" {
+				d.WorkDir = cfg.WorkDir
+			}
+			return Run(context.Background(), p, d, cfg)
 		}
 	}
-	f.Versions = out
-	return f, nil
+
+	listCmd := &cobra.Command{
+		Use:     "list [versions...]",
+		Aliases: []string{"list-to-build"},
+		Short:   "Print versions to build, one per line (missing upstream tags by default)",
+		Long: `List versions for dispatch fan-out.
+
+  apc list              # upstream tags not yet released here
+  apc list --all        # every upstream tag
+  apc list v1.2.3 v2.0  # echo explicit versions (planning pass-through)
+
+Stdout is only version lines (for mapfile/xargs). Logs go to stderr.`,
+		RunE: run(CommandList),
+	}
+	bindVersions(listCmd)
+
+	buildCmd := &cobra.Command{
+		Use:   "build [versions...]",
+		Short: "Build package tarballs (docker work binary for Linux; native Work on Windows)",
+		RunE:  run(CommandBuild),
+	}
+	bindVersions(buildCmd)
+	bindBuildFlags(buildCmd)
+
+	smokeCmd := &cobra.Command{
+		Use:   "smoke [versions...]",
+		Short: "Smoke-test existing tarballs under target/",
+		RunE:  run(CommandSmoke),
+	}
+	bindVersions(smokeCmd)
+
+	publishCmd := &cobra.Command{
+		Use:   "publish [versions...]",
+		Short: "Create GitHub releases from existing target/ artifacts",
+		RunE:  run(CommandPublish),
+	}
+	bindVersions(publishCmd)
+	publishCmd.Flags().BoolVar(&f.Recreate, "recreate", false, "delete existing release first")
+
+	workCmd := &cobra.Command{
+		Use:   "work",
+		Short: "In-container/native unit of work for one version+target (reads APC_* env)",
+		Long: `Runs Package.Work for a single matrix cell.
+
+Intended entrypoint when the binary is mounted into Docker:
+
+  docker run ... -v $PWD/apc:/apc:ro -v $out:/out --entrypoint /apc image work
+
+Environment:
+  APC_VERSION / PACKAGE_VERSION / <Meta.VersionEnv>
+  APC_TARGET / BUILD_TARGET
+  APC_OUTPUT_DIR / OUTPUT_DIR  (default /out in container)`,
+		Args: cobra.NoArgs,
+		RunE: run(CommandWork),
+	}
+
+	genCmd := &cobra.Command{
+		Use:   "generate",
+		Short: "Generate package repo assets",
+	}
+	genWorkflowCmd := &cobra.Command{
+		Use:   "workflow",
+		Short: "Write GitHub Actions workflows (build + dispatch-missing)",
+		Long: `Writes:
+
+  .github/workflows/build.yml
+  .github/workflows/dispatch-missing.yml
+
+build.yml is a thin matrix: checkout → mise → go run . build <version>
+dispatch-missing.yml fans out: go run . list | gh workflow run Build
+
+Matrix targets come from Meta.DefaultTargets (or linux-amd64/aarch64 defaults).`,
+		RunE: func(c *cobra.Command, args []string) error {
+			d := deps
+			if f.WorkDir != "" {
+				d.WorkDir = f.WorkDir
+			}
+			d = finalizeDeps(d)
+			cfg, err := ResolveConfig(d.Env, p.Meta(), f, CommandGenerateWorkflow)
+			if err != nil {
+				return err
+			}
+			if cfg.WorkDir != "" {
+				d.WorkDir = cfg.WorkDir
+			}
+			return Run(context.Background(), p, d, cfg)
+		},
+	}
+	genWorkflowCmd.Flags().StringVar(&f.WorkflowDir, "dir", ".github/workflows", "output directory for workflow YAML")
+	genWorkflowCmd.Flags().BoolVar(&f.ForceWrite, "force", false, "overwrite existing workflow files")
+	genCmd.AddCommand(genWorkflowCmd)
+
+	root.AddCommand(listCmd, buildCmd, smokeCmd, publishCmd, workCmd, genCmd)
+	return root
 }
