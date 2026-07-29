@@ -3,7 +3,6 @@ package foundation
 import (
 	"context"
 	"fmt"
-	"sort"
 )
 
 // PlanVersions returns the ordered list of versions to build.
@@ -69,6 +68,5 @@ func uniqueSorted(in []string) []string {
 		seen[s] = struct{}{}
 		out = append(out, s)
 	}
-	sort.Strings(out)
-	return out
+	return SortVersionStrings(out)
 }

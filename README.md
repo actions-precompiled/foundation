@@ -105,6 +105,21 @@ Also read (not `APC_*`): `GH_TOKEN` / `GITHUB_TOKEN`, `GITHUB_REPOSITORY`.
 4. **`--smoke-only`** — `Smoke` only.
 5. Else **build image** (unless skipped) → for each version × target: `Build` → `Smoke` → optional publish.
 
+## Version type
+
+`foundation.Version` (inspired by workspaced `internal/semver`) parses and
+compares package tags:
+
+```go
+a := foundation.ParseVersion("v1.2.3")
+b := foundation.ParseVersion("llvmorg-18.1.0")
+if a.Less(b) { /* … */ }
+foundation.SortVersionStrings(tags) // ascending
+```
+
+Specials: `latest`, `trunk` / `main` / `trunk-<sha>`. Bare artifact names via
+`Version.Bare()` or `VersionBare`.
+
 ## Status
 
 Foundation only. Workflow generators and migration of gettext/tesseract/quickshell

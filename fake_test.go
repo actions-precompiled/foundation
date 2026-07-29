@@ -217,6 +217,9 @@ func TestVersionBare(t *testing.T) {
 	if foundation.VersionBare("1.2.3") != "1.2.3" {
 		t.Fatal(foundation.VersionBare("1.2.3"))
 	}
+	if foundation.ParseVersion("v1.2.3").Bare() != "1.2.3" {
+		t.Fatal("ParseVersion.Bare")
+	}
 }
 
 func TestArtifactName(t *testing.T) {

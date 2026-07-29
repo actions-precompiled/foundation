@@ -67,8 +67,3 @@ func ResolveTargets(env Environ, meta Meta) []string {
 	}
 	return []string{HostTarget()}
 }
-
-// VersionBare strips a leading "v" from a tag for artifact names.
-func VersionBare(version string) string {
-	return strings.TrimPrefix(version, "v")
-}
