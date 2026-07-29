@@ -1,6 +1,7 @@
 package foundation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -104,40 +105,68 @@ func appendFile(fs FileSystem, path, content string) error {
 // CIPlanInput is read from the environment for the `plan` subcommand (GHA plan job).
 type CIPlanInput struct {
 	EventName string // GITHUB_EVENT_NAME
-	Version   string // INPUT_VERSION / APC_VERSION
+	Version   string // INPUT_VERSION / APC_VERSION (must be a real tag for publish)
 	Publish   bool   // INPUT_PUBLISH
 	Recreate  bool   // INPUT_RECREATE
-	// DefaultVersion used on push/PR when no input (e.g. "trunk").
+	// DefaultVersion, if set, is used on push/PR when no input.
+	// Empty means: resolve the latest upstream release tag (not trunk/main).
 	DefaultVersion string
 }
 
 // ResolveCIPlan picks version/publish/recreate for a Build workflow plan job.
-func ResolveCIPlan(in CIPlanInput) (version string, publish, recreate bool, err error) {
-	def := in.DefaultVersion
-	if def == "" {
-		def = "trunk"
-	}
+// When version is empty on push/PR, needLatest is true and RunCIPlan fetches the
+// latest upstream release tag. Trunk/main are never default release identities.
+func ResolveCIPlan(in CIPlanInput) (version string, publish, recreate, needLatest bool, err error) {
 	version = strings.TrimSpace(in.Version)
 	if in.EventName == "workflow_dispatch" {
 		if version == "" {
-			return "", false, false, fmt.Errorf("version required on workflow_dispatch")
+			return "", false, false, false, fmt.Errorf("version required on workflow_dispatch (use a real upstream tag)")
+		}
+		if !IsPublishableTag(version) && in.Publish {
+			return "", false, false, false, fmt.Errorf("refusing to publish non-tag %q (tagged releases only)", version)
 		}
 		publish = in.Publish
 		recreate = in.Recreate && publish
-		return version, publish, recreate, nil
+		return version, publish, recreate, false, nil
 	}
-	if version == "" {
-		version = def
+	// push / pull_request: smoke-build one tag, never publish by default
+	if version != "" {
+		return version, false, false, false, nil
 	}
-	return version, false, false, nil
+	if in.DefaultVersion != "" {
+		return strings.TrimSpace(in.DefaultVersion), false, false, false, nil
+	}
+	return "", false, false, true, nil
 }
 
 // RunCIPlan writes GITHUB_OUTPUT + step summary for the thin Build plan job.
-func RunCIPlan(deps Deps, meta Meta, in CIPlanInput) error {
+func RunCIPlan(ctx context.Context, deps Deps, meta Meta, in CIPlanInput) error {
 	meta = meta.Normalize()
-	version, publish, recreate, err := ResolveCIPlan(in)
+	version, publish, recreate, needLatest, err := ResolveCIPlan(in)
 	if err != nil {
 		return err
+	}
+	if needLatest {
+		if deps.GitHub == nil {
+			return fmt.Errorf("plan: need latest upstream tag but GitHub client is nil")
+		}
+		version, err = deps.GitHub.LatestReleaseTag(ctx, meta.UpstreamRepoAPI)
+		if err != nil {
+			// Fallback: list tags and take newest by Version sort
+			tags, err2 := deps.GitHub.ListUpstreamTags(ctx, meta.UpstreamRepoAPI)
+			if err2 != nil {
+				return fmt.Errorf("latest upstream tag: %w (fallback list: %v)", err, err2)
+			}
+			tags = SortVersionStrings(tags)
+			if len(tags) == 0 {
+				return fmt.Errorf("no upstream tags for %s", meta.UpstreamRepoAPI)
+			}
+			version = tags[len(tags)-1]
+			deps.Logf("plan: LatestReleaseTag failed (%v); using newest listed tag %s", err, version)
+		}
+	}
+	if version == "" {
+		return fmt.Errorf("plan: empty version")
 	}
 	if err := AppendGitHubOutput(deps.Env, deps.FS, map[string]string{
 		"version":  version,
@@ -151,6 +180,24 @@ func RunCIPlan(deps Deps, meta Meta, in CIPlanInput) error {
 	}
 	deps.Logf("plan package=%s version=%s publish=%v recreate=%v", meta.Name, version, publish, recreate)
 	return nil
+}
+
+// IsPublishableTag reports whether s is a real release tag (not trunk/main/latest).
+func IsPublishableTag(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	v := ParseVersion(s)
+	if v.IsTrunk() || v.IsLatest() {
+		return false
+	}
+	// bare branch names
+	switch strings.ToLower(s) {
+	case "main", "master", "head", "develop", "development":
+		return false
+	}
+	return true
 }
 
 func boolStr(b bool) string {

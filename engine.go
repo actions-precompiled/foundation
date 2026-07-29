@@ -106,17 +106,14 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 
 func runPlan(deps Deps, meta Meta, cfg Config) error {
 	in := CIPlanInput{
-		EventName:      deps.Env.Get(EnvGitHubEventName),
-		Version:        firstNonEmpty(firstOf(cfg.Versions), deps.Env.Get("INPUT_VERSION"), deps.Env.Get(EnvVersion)),
-		Publish:        ParseEnvBool(deps.Env.Get("INPUT_PUBLISH")) || cfg.Publish,
-		Recreate:       ParseEnvBool(deps.Env.Get("INPUT_RECREATE")) || cfg.Recreate,
-		DefaultVersion: "trunk",
+		EventName: deps.Env.Get(EnvGitHubEventName),
+		Version:   firstNonEmpty(firstOf(cfg.Versions), deps.Env.Get("INPUT_VERSION"), deps.Env.Get(EnvVersion)),
+		Publish:   ParseEnvBool(deps.Env.Get("INPUT_PUBLISH")) || cfg.Publish,
+		Recreate:  ParseEnvBool(deps.Env.Get("INPUT_RECREATE")) || cfg.Recreate,
+		// Empty DefaultVersion → latest upstream release tag (tagged releases only).
+		DefaultVersion: deps.Env.Get("APC_DEFAULT_VERSION"),
 	}
-	// optional: allow override default via env APC_DEFAULT_VERSION
-	if d := deps.Env.Get("APC_DEFAULT_VERSION"); d != "" {
-		in.DefaultVersion = d
-	}
-	return RunCIPlan(deps, meta, in)
+	return RunCIPlan(context.Background(), deps, meta, in)
 }
 
 func firstOf(ss []string) string {
@@ -242,6 +239,9 @@ func smokeVersion(ctx context.Context, p Package, deps Deps, meta Meta, cfg Conf
 func publishVersion(ctx context.Context, deps Deps, meta Meta, cfg Config, version string) error {
 	if deps.GitHub == nil {
 		return fmt.Errorf("publish: GitHub client is nil")
+	}
+	if !IsPublishableTag(version) {
+		return fmt.Errorf("publish: %q is not a tagged release (refusing trunk/main/latest)", version)
 	}
 	var assets []string
 	for _, target := range cfg.Targets {

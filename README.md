@@ -26,7 +26,7 @@ type Package interface {
 go run . plan                  # CI plan job → GITHUB_OUTPUT + step summary
 go run . list                 # missing upstream tags (one per line)
 go run . list --all           # all upstream tags
-go run . build trunk          # build (injects binary into docker for linux)
+go run . build v1.2.3          # build (injects binary into docker for linux)
 go run . build --dry-run v1.2.3
 go run . smoke v1.2.3
 go run . publish --recreate v1.2.3

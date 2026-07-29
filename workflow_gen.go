@@ -97,7 +97,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Upstream tag / trunk / ref to build'
+        description: 'Upstream release tag to build (e.g. llvmorg-21.1.0)'
         required: true
         type: string
       publish:

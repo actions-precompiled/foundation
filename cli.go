@@ -72,7 +72,7 @@ func newRootCmd(p Package, deps Deps) *cobra.Command {
 		Long: `Build, list, smoke-test, publish, and generate CI for a package.
 
 The same Go binary is the host orchestrator and the in-container worker:
-  host:   apc build trunk
+  host:   apc build v1.2.3
   docker: mounts this binary as /apc and runs: /apc work
 `,
 		SilenceUsage:  true,
