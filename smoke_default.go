@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 )
 
 // SmokeBinaryHelp is a default smoke: extract each tarball, require bin/<Binary>,
