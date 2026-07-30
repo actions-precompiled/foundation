@@ -77,7 +77,11 @@ func (r *DefaultRunner) OutputWith(ctx context.Context, opts RunOpts, name strin
 	r.log(name, args)
 	cmd := r.command(ctx, opts, name, args...)
 	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
+	if opts.Stdout != nil {
+		cmd.Stdout = io.MultiWriter(&stdout, opts.Stdout)
+	} else {
+		cmd.Stdout = &stdout
+	}
 	cmd.Stderr = r.stderrFor(opts)
 	if err := cmd.Run(); err != nil {
 		return stdout.String(), fmt.Errorf("%s: %w", name, err)

@@ -100,8 +100,16 @@ func SmokeBinDirHelp(ctx context.Context, deps Deps, prefix string, opts BinHelp
 		if n > 20 {
 			show = append(problems[:20], fmt.Sprintf("... and %d more", n-20))
 		}
+		// Prefer dynlink sentinel only when any problem mentions missing libs.
+		sent := ErrSmokeNoOutput
+		for _, p := range problems {
+			if strings.Contains(p, "missing shared lib") {
+				sent = ErrSmokeDynamicLink
+				break
+			}
+		}
 		return fmt.Errorf("%w: %d/%d bin tools failed self-contained start:\n  - %s",
-			ErrSmokeDynamicLink, n, tried, strings.Join(show, "\n  - "))
+			sent, n, tried, strings.Join(show, "\n  - "))
 	}
 	deps.Logf("smoke bin: %d/%d tools OK under clean env (--help/--version)", okN, tried)
 	return nil
@@ -149,7 +157,7 @@ func tryBinHelpFlags(ctx context.Context, deps Deps, env []string, timeout time.
 	var lastOut string
 	var lastErr error
 	for _, f := range flags {
-		o, e := OutputWithEnvTimeout(ctx, deps, env, timeout, path, f)
+		o, e := CombinedOutputWithEnvTimeout(ctx, deps, env, timeout, path, f)
 		lastOut, lastErr = o, e
 		if dynLinkFailure(o, e) {
 			return f, o, e
