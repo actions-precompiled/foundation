@@ -139,8 +139,9 @@ func isSmokeCandidate(path, name string) bool {
 	}
 	// Symlinks to tools are fine (clang -> clang-22).
 	if runtime.GOOS == "windows" {
-		lower := strings.ToLower(name)
-		return strings.HasSuffix(lower, ".exe") || !strings.Contains(name, ".")
+		// Only PE tools. Extensionless names are usually Python entrypoints
+		// (hmaptool, scan-view) that need a host interpreter — not self-contained.
+		return strings.HasSuffix(strings.ToLower(name), ".exe")
 	}
 	// Prefer executable bit; also accept ELFs without +x (rare install glitch).
 	if st.Mode()&0o111 != 0 {
@@ -189,8 +190,8 @@ func dynLinkFailure(out string, err error) bool {
 		"image not found", // macOS
 		"the code execution cannot proceed because", // Windows missing DLL
 		"unable to find dll",
+		"unable to find '", // e.g. unable to find 'python314.dll'
 		"library not loaded",
-		"lib*.so", // too broad — skip
 	}
 	for _, n := range needles {
 		if n == "lib*.so" {
