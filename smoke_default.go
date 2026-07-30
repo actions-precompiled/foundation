@@ -78,33 +78,9 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 
 	env := CleanSmokeEnv(deps.Env.Environ())
 
-	var lastOut string
-	var lastCode error
-	tried := [][]string{{"--help"}, {"--version"}, {"-V"}, {"-h"}}
-	for _, args := range tried {
-		out, err := OutputWithEnvTimeout(ctx, deps, env, 60*time.Second, binPath, args...)
-		lastOut = out
-		lastCode = err
-		for i, line := range strings.Split(out, "\n") {
-			if i >= 12 {
-				break
-			}
-			if strings.TrimSpace(line) != "" {
-				deps.Logf("  %s", line)
-			}
-		}
-		low := strings.ToLower(out)
-		if strings.Contains(low, "error while loading shared libraries") ||
-			strings.Contains(low, "cannot open shared object") {
-			return fmt.Errorf("%w: %v", ErrSmokeDynamicLink, args)
-		}
-		if strings.TrimSpace(out) != "" || err == nil {
-			deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
-			return nil
-		}
-	}
-	if lastCode != nil && strings.TrimSpace(lastOut) == "" {
-		return fmt.Errorf("%w (%v)", ErrSmokeNoOutput, tried[len(tried)-1])
+	// Exercise every bin/* under clean env so missing shared libs surface.
+	if err := SmokeBinDirHelp(ctx, deps, prefix, BinHelpOpts{Env: env}); err != nil {
+		return err
 	}
 	deps.Logf("✓ Smoke test passed: %s", filepath.Base(tarball))
 	return nil

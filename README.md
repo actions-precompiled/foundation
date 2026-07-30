@@ -63,6 +63,7 @@ Foundation owns **atoms** — small, standardized primitives packages compose:
 | Atom | Role |
 |------|------|
 | `OutputWithEnv` / `CleanSmokeEnv` | Run tools with an explicit env (no `LD_LIBRARY_PATH` hacks) |
+| `SmokeBinDirHelp` | Walk `bin/` and require each tool starts (`--help` / fallbacks) under clean env |
 | `CheckLinuxRelocatable` / `PatchLinuxOriginRPath` | Self-contained ELF `$ORIGIN` trees |
 | `WriteLine` / `Deps.Logf` / `Deps.Outf` | Consistent line logging |
 | `Deps.RemoveAllLog` | Best-effort cleanup with log |

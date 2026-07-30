@@ -38,7 +38,7 @@ Windows sysroot, project lists).
 
 | Do in foundation | Do in the package repo |
 |------------------|------------------------|
-| `OutputWithEnv`, `CleanSmokeEnv` | Which binary/flags to smoke |
+| `OutputWithEnv`, `CleanSmokeEnv`, `SmokeBinDirHelp` | Which product extras beyond bin-wide --help |
 | `CheckLinuxRelocatable`, `PatchLinuxOriginRPath` | When to call them after install |
 | `WriteLine` / `Logf` / `RemoveAllLog` | Package-specific log wording is fine |
 | `DefaultRunner` process wiring | Upstream clone/build steps for *this* product |
