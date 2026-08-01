@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // EnsureWorkerBinary returns a path to a package binary for goos/goarch suitable
@@ -141,10 +142,15 @@ func RunWorkInDocker(ctx context.Context, deps Deps, meta Meta, imageName, image
 	}
 
 	binds := []string{req.OutDir + ":/out", workerPath + ":/apc:ro"}
-	// Host-side preclone (if PrepHost started one): mount so Work skips git clone.
+	// Host-side preclone: wait until clone finished (marker), then mount read-only.
 	if deps.WorkDir != "" && req.Version != "" {
 		hostSrc := filepath.Join(deps.WorkDir, ".cache", "src", SafePathComponent(req.Version))
+		done := filepath.Join(hostSrc, ".apc-preclone-done")
 		if st, err := os.Stat(hostSrc); err == nil && st.IsDir() {
+			deps.Logf("docker: waiting for preclone %s", hostSrc)
+			if err := waitForFile(done, 45*time.Minute); err != nil {
+				return fmt.Errorf("wait preclone %s: %w", req.Version, err)
+			}
 			binds = append(binds, hostSrc+":/src:ro")
 			env["APC_PREBUILT_SRC"] = "/src"
 			deps.Logf("docker: mounting precloned source %s -> /src", hostSrc)
@@ -159,4 +165,18 @@ func RunWorkInDocker(ctx context.Context, deps Deps, meta Meta, imageName, image
 		Entrypoint: []string{"/apc"},
 		Cmd:        []string{"work"},
 	})
+}
+
+// waitForFile polls until path exists or ctx/timeout.
+func waitForFile(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if st, err := os.Stat(path); err == nil && st.Mode().IsRegular() {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timeout waiting for %s", path)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
