@@ -3,6 +3,7 @@ package foundation
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // OSFileSystem implements FileSystem with the real OS.
@@ -38,4 +39,14 @@ func (OSFileSystem) WriteFile(name string, data []byte, perm os.FileMode) error 
 
 func (OSFileSystem) ReadFile(name string) ([]byte, error) {
 	return os.ReadFile(name)
+}
+
+// SafePathComponent maps a version/tag string to a single path segment.
+func SafePathComponent(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "_empty"
+	}
+	repl := strings.NewReplacer("/", "_", "\\", "_", ":", "_", "..", "_")
+	return repl.Replace(s)
 }

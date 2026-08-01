@@ -140,10 +140,21 @@ func RunWorkInDocker(ctx context.Context, deps Deps, meta Meta, imageName, image
 		}
 	}
 
+	binds := []string{req.OutDir + ":/out", workerPath + ":/apc:ro"}
+	// Host-side preclone (if PrepHost started one): mount so Work skips git clone.
+	if deps.WorkDir != "" && req.Version != "" {
+		hostSrc := filepath.Join(deps.WorkDir, ".cache", "src", SafePathComponent(req.Version))
+		if st, err := os.Stat(hostSrc); err == nil && st.IsDir() {
+			binds = append(binds, hostSrc+":/src:ro")
+			env["APC_PREBUILT_SRC"] = "/src"
+			deps.Logf("docker: mounting precloned source %s -> /src", hostSrc)
+		}
+	}
+
 	return deps.Docker.Run(ctx, DockerRunRequest{
 		Image:      image,
 		User:       HostDockerUser(),
-		Binds:      []string{req.OutDir + ":/out", workerPath + ":/apc:ro"},
+		Binds:      binds,
 		Env:        env,
 		Entrypoint: []string{"/apc"},
 		Cmd:        []string{"work"},

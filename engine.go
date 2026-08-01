@@ -57,7 +57,10 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 	}
 
 	if hp, ok := p.(HostPrep); ok && cfg.Command == CommandBuild {
-		if err := hp.PrepHost(ctx, deps, cfg); err != nil {
+		// Hand packages the resolved version list so they can preclone while tools install.
+		prepCfg := cfg
+		prepCfg.Versions = append([]string(nil), versions...)
+		if err := hp.PrepHost(ctx, deps, prepCfg); err != nil {
 			return fmt.Errorf("prep host: %w", err)
 		}
 	}
