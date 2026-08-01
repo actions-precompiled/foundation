@@ -145,7 +145,8 @@ jobs:
       matrix:
         include:
 %s    runs-on: @{{matrix.runner}}@
-    timeout-minutes: 360
+    # Kitchen-sink LLVM on windows-latest is ~5h; 6h was canceling mid-link.
+    timeout-minutes: 720
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
