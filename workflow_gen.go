@@ -145,8 +145,7 @@ jobs:
       matrix:
         include:
 %s    runs-on: @{{matrix.runner}}@
-    # Kitchen-sink LLVM on windows-latest is ~5h; 6h was canceling mid-link.
-    timeout-minutes: 720
+    # No timeout-minutes: GHA hosted runners hard-cap jobs at 6h anyway.
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
