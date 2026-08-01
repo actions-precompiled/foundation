@@ -176,6 +176,13 @@ func buildRelease(ctx context.Context, p Package, deps Deps, meta Meta, cfg Conf
 	deps.Logf("Building %s version %s", meta.Name, version)
 	deps.Logf("========================================")
 
+	// Host WaitGroup barrier: install || preclone, then build.
+	if w, ok := p.(PrefetchWaiter); ok {
+		if err := w.WaitPrefetch(ctx, version); err != nil {
+			return fmt.Errorf("wait prefetch %s: %w", version, err)
+		}
+	}
+
 	for _, target := range cfg.Targets {
 		outDir := filepath.Join(cfg.BuildOutputDir, target)
 		if err := deps.FS.MkdirAll(outDir, 0o755); err != nil {

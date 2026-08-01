@@ -27,6 +27,12 @@ type HostPrep interface {
 	PrepHost(ctx context.Context, deps Deps, cfg Config) error
 }
 
+// PrefetchWaiter is optional: wait for host-side source prep (e.g. WaitGroup
+// on a preclone started in PrepHost) before Work / docker inject.
+type PrefetchWaiter interface {
+	WaitPrefetch(ctx context.Context, version string) error
+}
+
 // Meta is static package identity. Prefer filling fields in code over env overrides.
 type Meta struct {
 	Name            string
