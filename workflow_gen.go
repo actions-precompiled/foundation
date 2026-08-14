@@ -71,6 +71,10 @@ func RunnerForTarget(target string) string {
 		return "windows-11-arm"
 	case strings.HasPrefix(target, "windows-"):
 		return "windows-latest"
+	case IsDarwinTarget(target) && (strings.Contains(target, "amd64") || strings.Contains(target, "x86_64")):
+		return "macos-13"
+	case IsDarwinTarget(target):
+		return "macos-latest"
 	default:
 		return "ubuntu-latest"
 	}
@@ -144,8 +148,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-%s    runs-on: @{{matrix.runner}}@
+%s    name: @{{matrix.target}}@
+    runs-on: @{{matrix.runner}}@
     # No timeout-minutes: GHA hosted runners hard-cap jobs at 6h anyway.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
@@ -185,10 +193,12 @@ jobs:
           find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) | while read -r f; do
             base=$(basename "$f")
             case "$base" in
-              *-linux-amd64.*)   d=target/linux-amd64 ;;
-              *-linux-aarch64.*) d=target/linux-aarch64 ;;
-              *-windows-amd64.*) d=target/windows-amd64 ;;
-              *-windows-arm64.*) d=target/windows-arm64 ;;
+              *-linux-amd64.*)     d=target/linux-amd64 ;;
+              *-linux-aarch64.*)   d=target/linux-aarch64 ;;
+              *-windows-amd64.*)   d=target/windows-amd64 ;;
+              *-windows-arm64.*)   d=target/windows-arm64 ;;
+              *-darwin-amd64.*)    d=target/darwin-amd64 ;;
+              *-darwin-aarch64.*)  d=target/darwin-aarch64 ;;
               *) d=target/misc ;;
             esac
             mkdir -p "$d"

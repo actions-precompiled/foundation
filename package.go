@@ -13,8 +13,9 @@ type Package interface {
 	Meta() Meta
 
 	// Work produces artifacts for one version+target into req.OutDir.
-	// Called in-process on the host (Windows) or inside the build container (Linux)
-	// after the package binary is bind-mounted. Pure Go — no bash packaging scripts.
+	// Called in-process on the host (Windows/macOS) or inside the build
+	// container (Linux) after the package binary is bind-mounted. Pure Go — no
+	// bash packaging scripts.
 	Work(ctx context.Context, deps Deps, req BuildRequest) error
 
 	// Smoke verifies artifacts for one version+target after Work.

@@ -17,6 +17,7 @@ type Package interface {
 `Work` is pure Go and runs:
 
 - **natively** on Windows hosts for `windows-*` targets
+- **natively** on macOS hosts for `darwin-*` targets
 - **inside Docker** for Linux targets — the host builds this binary and
   bind-mounts it as `/apc`, then runs `/apc work`
 

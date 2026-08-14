@@ -66,7 +66,7 @@ func smokeOneTarball(ctx context.Context, deps Deps, meta Meta, tarball string) 
 	}
 
 	// Self-contained: never set LD_LIBRARY_PATH / never put package bin on PATH.
-	if runtime.GOOS != "windows" && !IsWindowsTarget(guessTargetFromTarball(tarball)) {
+	if runtime.GOOS != "windows" && !IsNativeTarget(guessTargetFromTarball(tarball)) {
 		if err := CheckLinuxRelocatable(prefix, RelocatableOpts{
 			RequiredBins: []string{meta.Binary},
 		}); err != nil {
@@ -109,7 +109,8 @@ func singleTopDir(deps Deps, tmp string) (string, error) {
 func guessTargetFromTarball(tarball string) string {
 	base := filepath.Base(tarball)
 	for _, t := range []string{
-		"windows-amd64", "windows-arm64",
+		TargetWindowsAMD64, TargetWindowsARM64,
+		TargetDarwinAMD64, TargetDarwinAArch64,
 		TargetLinuxAMD64, TargetLinuxAArch64,
 	} {
 		if strings.Contains(base, t) {
@@ -118,7 +119,6 @@ func guessTargetFromTarball(tarball string) string {
 	}
 	return ""
 }
-
 
 func extractTarGz(src, dst string) error {
 	f, err := os.Open(src)

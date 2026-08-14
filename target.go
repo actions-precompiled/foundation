@@ -5,18 +5,33 @@ import (
 	"strings"
 )
 
-// Known Linux targets used by actions-precompiled packages.
+// Known matrix targets used by actions-precompiled packages.
 const (
-	TargetLinuxAMD64   = "linux-amd64"
-	TargetLinuxAArch64 = "linux-aarch64"
+	TargetLinuxAMD64    = "linux-amd64"
+	TargetLinuxAArch64  = "linux-aarch64"
+	TargetWindowsAMD64  = "windows-amd64"
+	TargetWindowsARM64  = "windows-arm64"
+	TargetDarwinAMD64   = "darwin-amd64"
+	TargetDarwinAArch64 = "darwin-aarch64"
 )
 
-// HostTarget returns the native linux-* target for the current machine.
+// HostTarget returns the native matrix target for the current machine.
 func HostTarget() string {
-	switch runtime.GOARCH {
-	case "arm64":
-		return TargetLinuxAArch64
+	switch runtime.GOOS {
+	case "windows":
+		if runtime.GOARCH == "arm64" {
+			return TargetWindowsARM64
+		}
+		return TargetWindowsAMD64
+	case "darwin":
+		if runtime.GOARCH == "arm64" {
+			return TargetDarwinAArch64
+		}
+		return TargetDarwinAMD64
 	default:
+		if runtime.GOARCH == "arm64" {
+			return TargetLinuxAArch64
+		}
 		return TargetLinuxAMD64
 	}
 }
@@ -73,11 +88,21 @@ func IsWindowsTarget(target string) bool {
 	return strings.HasPrefix(target, "windows-")
 }
 
-// TargetsNeedDocker is true when any target is built via the Linux docker path
-// (i.e. not a windows-* target). Used to skip docker image builds on pure Windows runs.
+// IsDarwinTarget reports darwin-* / macos-* matrix targets.
+func IsDarwinTarget(target string) bool {
+	return strings.HasPrefix(target, "darwin-") || strings.HasPrefix(target, "macos-")
+}
+
+// IsNativeTarget reports targets whose Work runs on the host (not Docker).
+func IsNativeTarget(target string) bool {
+	return IsWindowsTarget(target) || IsDarwinTarget(target)
+}
+
+// TargetsNeedDocker is true when any target is built via the Linux docker path.
+// Used to skip docker image builds on pure Windows/macOS runs.
 func TargetsNeedDocker(targets []string) bool {
 	for _, t := range targets {
-		if t != "" && !IsWindowsTarget(t) {
+		if t != "" && !IsNativeTarget(t) {
 			return true
 		}
 	}

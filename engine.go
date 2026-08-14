@@ -192,7 +192,7 @@ func buildRelease(ctx context.Context, p Package, deps Deps, meta Meta, cfg Conf
 		deps.Logf("")
 		deps.Logf("Work %s / %s...", version, target)
 
-		if IsWindowsTarget(target) {
+		if IsNativeTarget(target) {
 			if err := p.Work(ctx, deps, req); err != nil {
 				return fmt.Errorf("work %s/%s: %w", version, target, err)
 			}

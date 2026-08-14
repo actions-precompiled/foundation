@@ -89,6 +89,8 @@ func TargetGOOSGOARCH(target string) (goos, goarch string) {
 	switch {
 	case strings.HasPrefix(target, "windows-"):
 		goos = "windows"
+	case strings.HasPrefix(target, "darwin-") || strings.HasPrefix(target, "macos-"):
+		goos = "darwin"
 	default:
 		goos = "linux"
 	}
