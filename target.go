@@ -93,9 +93,15 @@ func IsDarwinTarget(target string) bool {
 	return strings.HasPrefix(target, "darwin-") || strings.HasPrefix(target, "macos-")
 }
 
-// IsNativeTarget reports targets whose Work runs on the host (not Docker).
+// IsNativeTarget reports targets whose Work runs on the host (not Docker)
+// even when Meta.HostOnly is false.
 func IsNativeTarget(target string) bool {
 	return IsWindowsTarget(target) || IsDarwinTarget(target)
+}
+
+// WorkOnHost reports whether Work runs in-process for this target.
+func WorkOnHost(meta Meta, target string) bool {
+	return meta.HostOnly || IsNativeTarget(target)
 }
 
 // TargetsNeedDocker is true when any target is built via the Linux docker path.
@@ -107,4 +113,12 @@ func TargetsNeedDocker(targets []string) bool {
 		}
 	}
 	return false
+}
+
+// PackageNeedsDocker is TargetsNeedDocker unless Meta.HostOnly.
+func PackageNeedsDocker(meta Meta, targets []string) bool {
+	if meta.HostOnly {
+		return false
+	}
+	return TargetsNeedDocker(targets)
 }

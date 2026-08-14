@@ -50,6 +50,13 @@ func TestTargetsNeedDocker(t *testing.T) {
 	if !foundation.TargetsNeedDocker([]string{foundation.TargetWindowsAMD64, foundation.TargetLinuxAMD64}) {
 		t.Fatal("mixed targets need docker")
 	}
+	host := foundation.Meta{HostOnly: true}
+	if foundation.PackageNeedsDocker(host, []string{foundation.TargetLinuxAMD64}) {
+		t.Fatal("HostOnly packages do not need docker")
+	}
+	if !foundation.WorkOnHost(host, foundation.TargetLinuxAMD64) {
+		t.Fatal("HostOnly Work runs on the host for linux")
+	}
 }
 
 func TestTargetGOOSGOARCH(t *testing.T) {

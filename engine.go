@@ -86,7 +86,7 @@ func Run(ctx context.Context, p Package, deps Deps, cfg Config) error {
 	}
 
 	// CommandBuild
-	needDocker := TargetsNeedDocker(cfg.Targets)
+	needDocker := PackageNeedsDocker(meta, cfg.Targets)
 	switch {
 	case cfg.SkipImageBuild:
 		deps.Logf("APC_SKIP_IMAGE_BUILD set — using existing %s:%s", cfg.ImageName, cfg.ImageTag)
@@ -192,7 +192,7 @@ func buildRelease(ctx context.Context, p Package, deps Deps, meta Meta, cfg Conf
 		deps.Logf("")
 		deps.Logf("Work %s / %s...", version, target)
 
-		if IsNativeTarget(target) {
+		if WorkOnHost(meta, target) {
 			if err := p.Work(ctx, deps, req); err != nil {
 				return fmt.Errorf("work %s/%s: %w", version, target, err)
 			}

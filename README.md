@@ -18,8 +18,9 @@ type Package interface {
 
 - **natively** on Windows hosts for `windows-*` targets
 - **natively** on macOS hosts for `darwin-*` targets
-- **inside Docker** for Linux targets — the host builds this binary and
-  bind-mounts it as `/apc`, then runs `/apc work`
+- **natively** for every target when `Meta.HostOnly` is set
+- **inside Docker** for Linux targets otherwise — the host builds this binary
+  and bind-mounts it as `/apc`, then runs `/apc work`
 
 ## CLI (Cobra)
 

@@ -46,6 +46,8 @@ type Meta struct {
 	Homepage        string
 	// DefaultTargets drives CI matrix generation and APC_TARGETS default.
 	DefaultTargets []string
+	// HostOnly runs Work on the host for every target (no Docker).
+	HostOnly bool
 }
 
 // Normalize fills derived Meta defaults.
@@ -59,7 +61,7 @@ func (m Meta) Normalize() Meta {
 	if m.Homepage == "" && m.UpstreamRepoAPI != "" {
 		m.Homepage = "https://github.com/" + m.UpstreamRepoAPI
 	}
-	if m.ImageName == "" && m.Name != "" {
+	if m.ImageName == "" && m.Name != "" && !m.HostOnly {
 		m.ImageName = m.Name + "-buildenv"
 	}
 	if m.VersionEnv == "" && m.Name != "" {
@@ -75,7 +77,7 @@ func (m Meta) Validate() error {
 		return errMeta("Name")
 	case m.UpstreamRepoAPI == "":
 		return errMeta("UpstreamRepoAPI")
-	case m.ImageName == "":
+	case m.ImageName == "" && !m.HostOnly:
 		return errMeta("ImageName")
 	default:
 		return nil
