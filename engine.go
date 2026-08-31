@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // Run executes a host-side command (list/build/smoke/publish) from Config.
@@ -271,7 +272,7 @@ func publishVersion(ctx context.Context, deps Deps, meta Meta, cfg Config, versi
 			deps.Logf("  delete release: %v (continuing)", err)
 		}
 	}
-	notes := fmt.Sprintf("%s\n\nInstall: extract the tarball and put `bin/` on your PATH.\n\nAssets:\n", meta.Description)
+	notes := fmt.Sprintf("%s\n\n%s\n\nAssets:\n", meta.Description, releaseInstallHint(assets))
 	for _, a := range assets {
 		notes += fmt.Sprintf("- `%s`\n", filepath.Base(a))
 	}
@@ -284,6 +285,23 @@ func publishVersion(ctx context.Context, deps Deps, meta Meta, cfg Config, versi
 	}
 	deps.Logf("✓ Released %s", version)
 	return nil
+}
+
+func releaseInstallHint(assets []string) string {
+	if len(assets) == 0 {
+		return "Install: extract the tarball and put `bin/` on your PATH."
+	}
+	dmgOnly := true
+	for _, a := range assets {
+		if !strings.HasSuffix(strings.ToLower(a), ".dmg") {
+			dmgOnly = false
+			break
+		}
+	}
+	if dmgOnly {
+		return "Install: open the DMG and drag the app to Applications."
+	}
+	return "Install: extract the tarball and put `bin/` on your PATH."
 }
 
 func joinSpace(ss []string) string {

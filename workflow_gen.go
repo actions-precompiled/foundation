@@ -190,7 +190,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target
-          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) | while read -r f; do
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' \) | while read -r f; do
             base=$(basename "$f")
             case "$base" in
               *-linux-amd64.*)     d=target/linux-amd64 ;;

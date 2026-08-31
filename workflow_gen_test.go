@@ -96,6 +96,7 @@ func TestGenerateWorkflowNativeRunners(t *testing.T) {
 		"runner: macos-latest",
 		"*-darwin-amd64.*)",
 		"*-darwin-aarch64.*)",
+		"*.dmg",
 		"name: ${{ matrix.target }}",
 		"shell: bash",
 	} {

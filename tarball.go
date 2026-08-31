@@ -13,10 +13,25 @@ import (
 
 // ArtifactName returns {name}-{bareVersion}-{target}.tar.gz
 func ArtifactName(packageName, version, target string) string {
-	return fmt.Sprintf("%s-%s-%s.tar.gz", packageName, VersionBare(version), target)
+	return ArtifactNameExt(packageName, version, target, ".tar.gz")
 }
 
-// FindTarballs locates package tarballs for a version/target under outDir.
+// ArtifactNameExt is ArtifactName with a caller-chosen suffix (".tar.gz", ".dmg", ".zip").
+func ArtifactNameExt(packageName, version, target, ext string) string {
+	if ext == "" {
+		ext = ".tar.gz"
+	}
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	return fmt.Sprintf("%s-%s-%s%s", packageName, VersionBare(version), target, ext)
+}
+
+// artifactGlobs is the set of release files FindTarballs will pick up.
+var artifactGlobs = []string{"*.tar.gz", "*.zip", "*.dmg"}
+
+// FindTarballs locates package artifacts for a version/target under outDir.
+// Matches .tar.gz, .zip, and .dmg.
 func FindTarballs(fs FileSystem, packageName, version, target, outDir string) ([]string, error) {
 	if fs == nil {
 		return nil, fmt.Errorf("FindTarballs: %w", ErrFSNil)
@@ -25,14 +40,20 @@ func FindTarballs(fs FileSystem, packageName, version, target, outDir string) ([
 		return nil, nil
 	}
 
-	exact := filepath.Join(outDir, ArtifactName(packageName, version, target))
-	if _, err := fs.Stat(exact); err == nil {
-		return []string{exact}, nil
+	for _, ext := range []string{".tar.gz", ".zip", ".dmg"} {
+		exact := filepath.Join(outDir, ArtifactNameExt(packageName, version, target, ext))
+		if _, err := fs.Stat(exact); err == nil {
+			return []string{exact}, nil
+		}
 	}
 
-	matches, err := fs.Glob(filepath.Join(outDir, "*.tar.gz"))
-	if err != nil {
-		return nil, err
+	var matches []string
+	for _, g := range artifactGlobs {
+		got, err := fs.Glob(filepath.Join(outDir, g))
+		if err != nil {
+			return nil, err
+		}
+		matches = append(matches, got...)
 	}
 	bare := VersionBare(version)
 	var found []string
